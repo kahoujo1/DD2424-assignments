@@ -16,19 +16,17 @@ def load_batch(batchname: str):
     """
     # Load a batch of training data
     cifar_dir = '../data/cifar-10-batches-py/'
-    with open(cifar_dir + 'data_batch_1', 'rb') as fo:
+    with open(cifar_dir + batchname, 'rb') as fo:
         dict = pickle.load(fo, encoding='bytes')
     # Extract the image data and cast to float from the dict dictionary
     X = dict[b'data'].astype(np.float64) / 255.0
     X = X.transpose()
     nn = X.shape[1]
-    # Reshape each image from a column vector to a 3d array
-    X_im = X.reshape((32, 32, 3, nn), order='F')
-    X_im = np.transpose(X_im, (1, 0, 2, 3))
+    # extract the labels
     y = dict[b'labels']
     y = np.array(y)
     # Create one hot-encoding of the labels
     K = 10
     Y = np.zeros((K, nn))
     Y[y, np.arange(nn)] = 1
-    return X_im, Y, y
+    return X, Y, y

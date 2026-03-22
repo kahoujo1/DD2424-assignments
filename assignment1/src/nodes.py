@@ -11,7 +11,7 @@ class LinearLayer(Node):
     def __init__(self, d_in, d_out):
         np.random.seed(42) # for reproducibility
         self.W = np.random.randn(d_out, d_in) * 0.01
-        self.b = np.zeros(d_out)
+        self.b = np.zeros((d_out, 1))
         self.X = None # save input for backward pass
         self.grad_W = 0
         self.grad_b = 0
@@ -55,26 +55,28 @@ class LinearLayer(Node):
 class CrossEntropyLoss(Node):
     def __init__(self):
         self.P = None # save softmax probabilities for backward pass
+        self.Y = None # save true labels for backward pass
 
-    def forward(self, S: np.array, Y: np.array):
+    def forward(self, logits: np.array, Y: np.array) -> np.float64:
         """
         Calculates the forward pass for the cross-entropy loss with softmax.
 
         Args:
-            S (numpy array): Input logits of shape (K, N) where K is the number of classes and N is the batch size.
+            logits (numpy array): Input logits of shape (K, N) where K is the number of classes and N is the batch size.
             Y (numpy array): True probability distribution of the classes with size (K, N) (most often one hot encoding).
+
+        Returns:
+            numpy.float64: The average cross-entropy loss over the batch.
         """
-        self.P = np.exp(S)
+        self.Y = Y
+        self.P = np.exp(logits)
         reg = np.sum(self.P,axis = 0, keepdims=True)
         self.P /= reg
-        loss = -np.sum(Y * np.log(self.P)) / S.shape[1]
+        loss = -np.sum(Y * np.log(self.P)) / logits.shape[1]
         return loss
     
-    def backward(self, Y: np.array):
+    def backward(self) -> np.array:
         """
-        Calculates the gradient with respect to the input logits S.
-
-        Args:
-            Y (numpy array): True probability distribution of the classes with size (K, N) (most often one hot encoding).
+        Calculates the gradient with respect to the input logits.
         """
-        return self.P - Y
+        return self.P - self.Y

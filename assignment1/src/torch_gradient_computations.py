@@ -1,17 +1,17 @@
 import torch
-
-def ComputeGradsWithTorch(X, y, network_params):
+import numpy as np
+def ComputeGradsWithTorch(X, y, W, b):
 
     # torch requires arrays to be torch tensors
     Xt = torch.from_numpy(X)
 
     # will be computing the gradient w.r.t. these parameters
-    W = torch.tensor(network_params['W'], requires_grad=True)
-    b = torch.tensor(network_params['b'], requires_grad=True)    
+    W = torch.tensor(W, requires_grad=True)
+    b = torch.tensor(b, requires_grad=True)    
     
     N = X.shape[1]
     
-    scores = torch.matmul(W, Xt)  + b;
+    scores = torch.matmul(W, Xt)  + b
 
     ## give an informative name to this torch class
     apply_softmax = torch.nn.Softmax(dim=0)
