@@ -2,3 +2,5 @@
 
 # dataset for assignment 1
 assignment1/data/
+
+assignment1/src/__pycache__/
