@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-def ComputeGradsWithTorch(X, y, W, b):
+def ComputeGradsWithTorch(X, y, W, b, reg: int = 0):
 
     # torch requires arrays to be torch tensors
     Xt = torch.from_numpy(X)
@@ -27,7 +27,7 @@ def ComputeGradsWithTorch(X, y, W, b):
 
     # extract the computed gradients and make them numpy arrays 
     grads = {}
-    grads['W'] = W.grad.numpy()
+    grads['W'] = W.grad.numpy() + 2 * reg * W.detach().numpy() # add L2 regularization gradient
     grads['b'] = b.grad.numpy()
 
     return grads    

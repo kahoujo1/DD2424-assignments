@@ -30,3 +30,15 @@ def load_batch(batchname: str):
     Y = np.zeros((K, nn))
     Y[y, np.arange(nn)] = 1
     return X, Y, y
+
+def calculate_mean_grad_difference(grad1: np.ndarray, grad2: np.ndarray) -> np.float64:
+    """
+    Calculates the mean relative error between two gradients.
+    Args:
+        grad1 (numpy array): The first gradient to compare.
+        grad2 (numpy array): The second gradient to compare.
+    Returns:
+        numpy.float64: The mean relative error between the two gradients.
+    """
+    denum = max(1e-8, np.mean(np.abs(grad1) + np.abs(grad2)))
+    return np.mean(np.abs(grad1 - grad2) / denum)
