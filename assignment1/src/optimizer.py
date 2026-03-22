@@ -23,6 +23,8 @@ class Optimizer:
         self.lr = lr
         self.reg = reg
         # variables for tracking training progress
+        self.train_cost_history = []
+        self.val_cost_history = []
         self.train_loss_history = []
         self.val_loss_history = []
         self.train_acc_history = []
@@ -119,8 +121,10 @@ class Optimizer:
                 Y_batch = Y_train_shuffled[:, i:i+batch_size]
                 self.step(X_batch, Y_batch)
             # compute training and validation loss and accuracy for tracking
-            self.train_loss_history.append(self.compute_loss(X_train, Y_train))
-            self.val_loss_history.append(self.compute_loss(X_val, Y_val))
+            self.train_cost_history.append(self.compute_loss(X_train, Y_train))
+            self.val_cost_history.append(self.compute_loss(X_val, Y_val))
+            self.train_loss_history.append(self.compute_loss(X_train, Y_train) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
+            self.val_loss_history.append(self.compute_loss(X_val, Y_val) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
             self.train_acc_history.append(self.compute_accuracy(X_train, y_train))
             self.val_acc_history.append(self.compute_accuracy(X_val, y_val))
             # print training progress
@@ -132,15 +136,27 @@ class Optimizer:
         Plots the training and validation loss and accuracy curves.
         """
         epochs = np.arange(1, len(self.train_loss_history) + 1)
-        plt.figure(figsize=(12, 5))
-        plt.subplot(1, 2, 1)
+        plt.figure(figsize=(6, 5))
         plt.plot(epochs, self.train_loss_history, label='Train Loss')
         plt.plot(epochs, self.val_loss_history, label='Val Loss')
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         plt.title('Training and Validation Loss')
         plt.legend()
-        plt.subplot(1, 2, 2)
+        plt.tight_layout()
+        plt.show()
+        
+        plt.figure(figsize=(6, 5))
+        plt.plot(epochs, self.train_cost_history, label='Train Cost (including regularization)')
+        plt.plot(epochs, self.val_cost_history, label='Val Cost (including regularization)')
+        plt.xlabel('Epoch')
+        plt.ylabel('Cost')
+        plt.title('Training and Validation Cost')
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+        plt.figure(figsize=(6, 5))
         plt.plot(epochs, self.train_acc_history, label='Train Accuracy')
         plt.plot(epochs, self.val_acc_history, label='Val Accuracy')
         plt.xlabel('Epoch')
