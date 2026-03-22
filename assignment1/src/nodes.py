@@ -34,7 +34,7 @@ class LinearLayer(Node):
         Calculates the vector jacobian product and returns column vector gradient according to the chain rule.
         """
         self.grad_W += grad@self.X.T *(1/grad.shape[1])
-        self.grad_b += np.sum(grad, axis=1) *(1/grad.shape[1])
+        self.grad_b += np.sum(grad, axis=1, keepdims=True) *(1/grad.shape[1])
         return self.W.T @ grad
 
     def update_params(self, lr: np.float64):
@@ -65,7 +65,7 @@ class CrossEntropyLoss(Node):
             Y (numpy array): True probability distribution of the classes with size (K, N) (most often one hot encoding).
         """
         self.P = np.exp(S)
-        reg = np.sum(self.P,axis = 0)
+        reg = np.sum(self.P,axis = 0, keepdims=True)
         self.P /= reg
         loss = -np.sum(Y * np.log(self.P)) / S.shape[1]
         return loss
