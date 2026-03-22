@@ -21,7 +21,7 @@ def ComputeGradsWithTorch(X, y, W, b, reg: int = 0):
     
     ## compute the loss
     loss = torch.mean(-torch.log(P[y, np.arange(N)]))    
-
+    print(f"Loss computed with PyTorch: {loss.item():.12f}")
     # compute the backward pass relative to the loss and the named parameters 
     loss.backward()
 
