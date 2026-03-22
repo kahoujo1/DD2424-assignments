@@ -143,6 +143,7 @@ class Optimizer:
         plt.ylabel('Loss')
         plt.title('Training and Validation Loss')
         plt.legend()
+        plt.grid()
         plt.tight_layout()
         plt.show()
         
@@ -152,6 +153,7 @@ class Optimizer:
         plt.xlabel('Epoch')
         plt.ylabel('Cost')
         plt.title('Training and Validation Cost')
+        plt.grid()
         plt.legend()
         plt.tight_layout()
         plt.show()
@@ -162,6 +164,7 @@ class Optimizer:
         plt.xlabel('Epoch')
         plt.ylabel('Accuracy')
         plt.title('Training and Validation Accuracy')
+        plt.grid()
         plt.legend()
         plt.tight_layout()
         plt.show()
