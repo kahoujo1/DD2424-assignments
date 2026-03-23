@@ -115,6 +115,11 @@ class Optimizer:
             perm = np.random.permutation(N_train)
             X_train_shuffled = X_train[:, perm]
             Y_train_shuffled = Y_train[:, perm]
+            #TODO: add data augmentation (vertical flipping)
+            # flip each image in the batch with 50% probability
+            flip_mask = np.random.rand(N_train) < 0.5
+            X_train_shuffled[:, flip_mask] = self.flip_vertically(X_train_shuffled[:, flip_mask])
+
             # mini-batch training
             for i in range(0, N_train, batch_size):
                 X_batch = X_train_shuffled[:, i:i+batch_size]
@@ -168,3 +173,25 @@ class Optimizer:
         plt.legend()
         plt.tight_layout()
         plt.show()
+
+    def flip_vertically(self, X: np.ndarray) -> np.ndarray:
+        """
+        Flips the input images vertically.
+
+        Args: 
+            X (numpy array): Input batch of shape (D, N), where N is the number of samples, and D is the flattened image dimensionalitu.
+        
+        Returns:
+            numpy array: Vertically flipped images of shape (D, N).
+        """
+        # Reshape X to (32, 32, 3, N) to represent the images in their original shape
+        N = X.shape[1]
+        X_reshaped = X.reshape((32, 32, 3, N), order='F')
+        
+        # Flip the images vertically by reversing the order of the rows
+        X_flipped = X_reshaped[::-1, :, :, :]
+        
+        # Reshape back to (D, N)
+        X_flipped = X_flipped.reshape((32*32*3, N), order='F')
+        
+        return X_flipped
