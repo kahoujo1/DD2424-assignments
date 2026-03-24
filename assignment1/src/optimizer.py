@@ -8,7 +8,7 @@ from model import Model
 from nodes import CrossEntropyLoss, LinearLayer
 
 class Optimizer:
-    def __init__(self, model: Model, loss_fn: CrossEntropyLoss, lr: np.float64, reg: np.float64):
+    def __init__(self, model: Model, loss_fn: CrossEntropyLoss, lr: np.float64, reg: np.float64, vertical_flip_prob: float = 0):
         """
         Initializes the optimizer.
 
@@ -17,11 +17,13 @@ class Optimizer:
             loss_fn (CrossEntropyLoss): The loss function to optimize.
             lr (np.float64): The learning rate.
             reg (np.float64): The regularization parameter (lambda).
+            vertical_flip_prob (float, optional): The probability of applying vertical flipping as a data augmentation technique. Defaults to 0 (no flipping).
         """
         self.model = model
         self.loss_fn = loss_fn
         self.lr = lr
         self.reg = reg
+        self.vertical_flip_prob = vertical_flip_prob
         # variables for tracking training progress
         self.train_cost_history = []
         self.val_cost_history = []
@@ -115,11 +117,10 @@ class Optimizer:
             perm = np.random.permutation(N_train)
             X_train_shuffled = X_train[:, perm]
             Y_train_shuffled = Y_train[:, perm]
-            #TODO: add data augmentation (vertical flipping)
-            # flip each image in the batch with 50% probability
-            flip_mask = np.random.rand(N_train) < 0.5
-            X_train_shuffled[:, flip_mask] = self.flip_vertically(X_train_shuffled[:, flip_mask])
-
+            # flip each image in the batch with the specified probability
+            if self.vertical_flip_prob > 0:
+                flip_mask = np.random.rand(N_train) < self.vertical_flip_prob
+                X_train_shuffled[:, flip_mask] = self.flip_vertically(X_train_shuffled[:, flip_mask])
             # mini-batch training
             for i in range(0, N_train, batch_size):
                 X_batch = X_train_shuffled[:, i:i+batch_size]
