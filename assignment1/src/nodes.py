@@ -105,7 +105,7 @@ class KBinaryCELoss(Node):
         # average over batch
         eps = 1e-12
         P_clipped = np.clip(self.P, eps, 1 - eps)   
-        loss = -np.sum(Y*np.log(P_clipped) + (1-Y)*np.log(1-P_clipped)) / (logits.shape[1])
+        loss = -np.sum(Y*np.log(P_clipped) + (1-Y)*np.log(1-P_clipped)) / (logits.shape[1] * logits.shape[0])
         return loss
     
     def backward(self) -> np.array:
@@ -115,4 +115,4 @@ class KBinaryCELoss(Node):
         Returns:
             numpy.array: Gradient of the loss with respect to the input logits, of shape (K, N).
         """
-        return (self.P - self.Y) / self.P.shape[1]
+        return (self.P - self.Y) / (self.P.shape[1] * self.P.shape[0])
