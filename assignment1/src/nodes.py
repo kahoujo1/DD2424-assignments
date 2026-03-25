@@ -33,8 +33,8 @@ class LinearLayer(Node):
         """
         Calculates the vector jacobian product and returns column vector gradient according to the chain rule.
         """
-        self.grad_W += grad@self.X.T *(1/grad.shape[1])
-        self.grad_b += np.sum(grad, axis=1, keepdims=True) *(1/grad.shape[1])
+        self.grad_W += grad@self.X.T
+        self.grad_b += np.sum(grad, axis=1, keepdims=True)
         return self.W.T @ grad
 
     def update_params(self, lr: np.float64):
@@ -82,9 +82,9 @@ class CrossEntropyLoss(Node):
         Returns:
             numpy.array: Gradient of the loss with respect to the input logits, of shape (K, N).
         """
-        return self.P - self.Y
+        return (self.P - self.Y) / self.P.shape[1]
 
-class BinaryCELoss(Node):
+class KBinaryCELoss(Node):
     def __init__(self):
         self.P = None # save sigmoid probabilityes for backward pass
         self.Y = None # save true labels for backward pass
@@ -102,8 +102,10 @@ class BinaryCELoss(Node):
         """
         self.Y = Y
         self.P = 1 / (1 + np.exp(-logits))
-        # average over batch and classes !
-        loss = -np.sum(Y*self.P + (1-Y)*(1-self.P)) / (logits.shape[1] * logits.shape[0])
+        # average over batch
+        eps = 1e-12
+        P_clipped = np.clip(self.P, eps, 1 - eps)   
+        loss = -np.sum(Y*np.log(P_clipped) + (1-Y)*np.log(1-P_clipped)) / (logits.shape[1])
         return loss
     
     def backward(self) -> np.array:
@@ -113,4 +115,4 @@ class BinaryCELoss(Node):
         Returns:
             numpy.array: Gradient of the loss with respect to the input logits, of shape (K, N).
         """
-        return self.P - self.Y
+        return (self.P - self.Y) / self.P.shape[1]
