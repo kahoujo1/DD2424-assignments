@@ -78,5 +78,39 @@ class CrossEntropyLoss(Node):
     def backward(self) -> np.array:
         """
         Calculates the gradient with respect to the input logits.
+
+        Returns:
+            numpy.array: Gradient of the loss with respect to the input logits, of shape (K, N).
+        """
+        return self.P - self.Y
+
+class BinaryCELoss(Node):
+    def __init__(self):
+        self.P = None # save sigmoid probabilityes for backward pass
+        self.Y = None # save true labels for backward pass
+
+    def forward(self, logits: np.array, Y: np.array) -> np.float64:
+        """
+        Calculates the forward pass for K-binary cross-entropy loss with sigmoid.
+        
+        Args:
+            logits (numpy array): Input logits of shape (K, N) where K is the number of classes and N is the batch size.
+            Y (numpy array): True probability distribution of the classes with size (K, N), where each column is a one-hot encoded vector.
+
+        Returns:
+            numpy.float64: The average binary cross-entropy loss over the batch.
+        """
+        self.Y = Y
+        self.P = 1 / (1 + np.exp(-logits))
+        # average over batch and classes !
+        loss = -np.sum(Y*self.P + (1-Y)*(1-self.P)) / (logits.shape[1] * logits.shape[0])
+        return loss
+    
+    def backward(self) -> np.array:
+        """
+        Calculates the gradient with respect to the input logits.
+
+        Returns:
+            numpy.array: Gradient of the loss with respect to the input logits, of shape (K, N).
         """
         return self.P - self.Y
