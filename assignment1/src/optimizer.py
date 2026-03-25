@@ -6,16 +6,16 @@ import numpy as np
 import copy
 import matplotlib.pyplot as plt
 from model import Model
-from nodes import CrossEntropyLoss, LinearLayer, BinaryCELoss
+from nodes import CrossEntropyLoss, LinearLayer, KBinaryCELoss
 
 class Optimizer:
-    def __init__(self, model: Model, loss_fn: CrossEntropyLoss | BinaryCELoss, lr: np.float64, reg: np.float64, vertical_flip_prob: float = 0):
+    def __init__(self, model: Model, loss_fn: CrossEntropyLoss | KBinaryCELoss, lr: np.float64, reg: np.float64, vertical_flip_prob: float = 0):
         """
         Initializes the optimizer.
 
         Args:
             model (Model): The model to optimize.
-            loss_fn (CrossEntropyLoss | BinaryCELoss): The loss function to optimize.
+            loss_fn (CrossEntropyLoss | KBinaryCELoss): The loss function to optimize.
             lr (np.float64): The learning rate.
             reg (np.float64): The regularization parameter (lambda).
             vertical_flip_prob (float, optional): The probability of applying vertical flipping as a data augmentation technique. Defaults to 0 (no flipping).
@@ -47,7 +47,7 @@ class Optimizer:
         probs = None
         if isinstance(self.loss_fn, CrossEntropyLoss):
             probs = np.exp(logits) / np.sum(np.exp(logits), axis=0, keepdims=True)
-        elif isinstance(self.loss_fn, BinaryCELoss):
+        elif isinstance(self.loss_fn, KBinaryCELoss):
             probs = 1 / (1 + np.exp(-logits))
         return probs
     
@@ -110,7 +110,7 @@ class Optimizer:
         # update parameters
         self.model.update_params(self.lr)
     
-    def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, num_epochs: int, batch_size: int = 100, decaying_lr_epochs: int = 0, print_every: int = 0) -> None:
+    def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, num_epochs: int, batch_size: int = 100, decaying_lr_epochs: int = 0, decay_factor: float = 10.0, print_every: int = 0) -> None:
         """
         Trains the model.
 
@@ -122,6 +122,7 @@ class Optimizer:
             num_epochs (int): The number of epochs to train for.
             batch_size (int, optional): The size of each mini-batch. Defaults to 100.
             decaying_lr_epochs (int, optional): If greater than 0, decays the learning rate by a factor of 10 every decaying_lr_epochs epochs. Defaults to 0 (no decay).
+            decay_factor (float, optional): The factor by which to decay the learning rate. Defaults to 10.0.
             print_every (int, optional): If greater than 0, prints training progress every print_every epochs. Defaults to 0 (no printing).
         """
         N_train = X_train.shape[1]
@@ -158,7 +159,7 @@ class Optimizer:
                 print(f'Epoch {epoch+1}/{num_epochs} - Train Loss: {self.train_loss_history[-1]:.4f}, Val Loss: {self.val_loss_history[-1]:.4f}, Train Acc: {self.train_acc_history[-1]:.4f}, Val Acc: {self.val_acc_history[-1]:.4f}')
             # decay learning rate if specified
             if decaying_lr_epochs > 0 and (epoch + 1) % decaying_lr_epochs == 0:
-                self.lr /= 10
+                self.lr /= decay_factor
                 print(f'Epoch {epoch+1}/{num_epochs} - Learning rate decayed to {self.lr}')
 
     def plot_training_progress(self) -> None:
