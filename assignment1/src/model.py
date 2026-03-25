@@ -22,21 +22,7 @@ class Model:
         for layer in self.layers:
             X = layer.forward(X)
         return X
-    
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        """
-        Predicts the class label probabilities for the input data.
-        
-        Args:
-            X (numpy array): Input data of shape (D, N) where N is the batch size and D is the dimensionality.
 
-        Returns:
-            numpy array: Predicted class probabilities of shape (K, N) where K is the number of classes.
-        """
-        logits = self.forward(X)
-        probs = np.exp(logits) / np.sum(np.exp(logits), axis=0, keepdims=True)
-        return probs
-    
     def backward(self, grad: np.ndarray) -> None:
         """
         Performs the backward pass of the model.

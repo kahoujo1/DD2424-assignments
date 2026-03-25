@@ -3,18 +3,19 @@ Optimizer class for training.
 """
 
 import numpy as np
+import copy
 import matplotlib.pyplot as plt
 from model import Model
-from nodes import CrossEntropyLoss, LinearLayer
+from nodes import CrossEntropyLoss, LinearLayer, BinaryCELoss
 
 class Optimizer:
-    def __init__(self, model: Model, loss_fn: CrossEntropyLoss, lr: np.float64, reg: np.float64, vertical_flip_prob: float = 0):
+    def __init__(self, model: Model, loss_fn: CrossEntropyLoss | BinaryCELoss, lr: np.float64, reg: np.float64, vertical_flip_prob: float = 0):
         """
         Initializes the optimizer.
 
         Args:
             model (Model): The model to optimize.
-            loss_fn (CrossEntropyLoss): The loss function to optimize.
+            loss_fn (CrossEntropyLoss | BinaryCELoss): The loss function to optimize.
             lr (np.float64): The learning rate.
             reg (np.float64): The regularization parameter (lambda).
             vertical_flip_prob (float, optional): The probability of applying vertical flipping as a data augmentation technique. Defaults to 0 (no flipping).
@@ -32,6 +33,24 @@ class Optimizer:
         self.train_acc_history = []
         self.val_acc_history = []
 
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """
+        Predicts the class label probabilities for the input data.
+        
+        Args:
+            X (numpy array): Input data of shape (D, N) where N is the batch size and D is the dimensionality.
+
+        Returns:
+            numpy.array: Predicted class probabilities of shape (K, N) where K is the number of classes.
+        """
+        logits = self.model.forward(X)
+        probs = None
+        if isinstance(self.loss_fn, CrossEntropyLoss):
+            probs = np.exp(logits) / np.sum(np.exp(logits), axis=0, keepdims=True)
+        elif isinstance(self.loss_fn, BinaryCELoss):
+            probs = 1 / (1 + np.exp(-logits))
+        return probs
+    
     def compute_loss(self, X: np.ndarray, Y: np.ndarray) -> np.float64:
         """
         Computes the loss for the given input.
@@ -62,7 +81,7 @@ class Optimizer:
         Returns:
             numpy.float64: the computed accuracy
         """
-        preds = np.argmax(self.model.predict(X), axis=0)
+        preds = np.argmax(self.predict(X), axis=0)
         return np.mean(preds == y)
 
     def step(self, X: np.ndarray, Y: np.ndarray) -> None:
@@ -91,7 +110,7 @@ class Optimizer:
         # update parameters
         self.model.update_params(self.lr)
     
-    def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, num_epochs: int, batch_size: int = 16, print_every: int = 0) -> None:
+    def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, num_epochs: int, batch_size: int = 100, decaying_lr_epochs: int = 0, print_every: int = 0) -> None:
         """
         Trains the model.
 
@@ -101,7 +120,8 @@ class Optimizer:
             X_val (numpy array): Validation data of shape (D, N_val), where N_val is the number of validation samples and D is the input dimensionality.
             y_val (numpy array): Validation labels of shape (N_val,), where N_val is the number of validation samples.
             num_epochs (int): The number of epochs to train for.
-            batch_size (int, optional): The size of each mini-batch. Defaults to 16.
+            batch_size (int, optional): The size of each mini-batch. Defaults to 100.
+            decaying_lr_epochs (int, optional): If greater than 0, decays the learning rate by a factor of 10 every decaying_lr_epochs epochs. Defaults to 0 (no decay).
             print_every (int, optional): If greater than 0, prints training progress every print_every epochs. Defaults to 0 (no printing).
         """
         N_train = X_train.shape[1]
@@ -136,6 +156,10 @@ class Optimizer:
             # print training progress
             if print_every > 0 and (epoch + 1) % print_every == 0:
                 print(f'Epoch {epoch+1}/{num_epochs} - Train Loss: {self.train_loss_history[-1]:.4f}, Val Loss: {self.val_loss_history[-1]:.4f}, Train Acc: {self.train_acc_history[-1]:.4f}, Val Acc: {self.val_acc_history[-1]:.4f}')
+            # decay learning rate if specified
+            if decaying_lr_epochs > 0 and (epoch + 1) % decaying_lr_epochs == 0:
+                self.lr /= 10
+                print(f'Epoch {epoch+1}/{num_epochs} - Learning rate decayed to {self.lr}')
 
     def plot_training_progress(self) -> None:
         """
@@ -196,3 +220,34 @@ class Optimizer:
         X_flipped = X_flipped.reshape((32*32*3, N), order='F')
         
         return X_flipped
+    
+    def grid_search(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, lr_values: np.ndarray, reg_values: np.ndarray, batch_values:np.ndarray) -> None:
+        """
+        Performs a grid search over the specified parameters, to find the best combination.
+        
+        Args:
+            X_train (numpy array): Training input data.
+            y_train (numpy array): Training labels.
+            X_val (numpy array): Validation input data.
+            y_val (numpy array): Validation labels.
+            lr_values (numpy array): Array of learning rate values to search over.
+            reg_values (numpy array): Array of regularization parameter values to search over.
+            batch_values (numpy array): Array of batch size values to search over.
+        """
+        best_val_acc = 0.0
+        best_params = None
+        for lr in lr_values:
+            for reg in reg_values:
+                for batch_size in batch_values:
+                    print(f'Testing lr={lr}, reg={reg}, batch_size={batch_size}')
+                    model = copy.deepcopy(self.model)  # create a fresh model for each run
+                    optimizer = Optimizer(model, self.loss_fn, lr=lr, reg=reg, vertical_flip_prob=self.vertical_flip_prob)
+                    optimizer.train(X_train, y_train, X_val, y_val, num_epochs=150, batch_size=batch_size, print_every=0)
+                    val_acc = np.max(optimizer.val_acc_history)
+                    epoch = np.argmax(optimizer.val_acc_history)
+                    print(f'Max validation accuracy {val_acc:.4f} at epoch {epoch}')
+                    if val_acc > best_val_acc:
+                        best_val_acc = val_acc
+                        best_params = (epoch, lr, reg, batch_size)
+        print(f"Final best validation accuracy: {best_val_acc}")
+        print(f"Best parameters: epoch={best_params[0]}, lr={best_params[1]}, reg={best_params[2]}, batch_size={best_params[3]}")
