@@ -15,7 +15,7 @@ def load_batch(batchname: str):
         - y is a vector of true labels (N,)
     """
     # Load a batch of training data
-    cifar_dir = '../data/cifar-10-batches-py/'
+    cifar_dir = '../../assignment1/data/cifar-10-batches-py/'
     with open(cifar_dir + batchname, 'rb') as fo:
         dict = pickle.load(fo, encoding='bytes')
     # Extract the image data and cast to float from the dict dictionary
