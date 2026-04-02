@@ -1,13 +1,15 @@
 """
-Implementation of the 1-layer FNN model for CIFAR-10 classification.
+Implementation of a 2-layer FNN model for CIFAR-10 classification.
 """
 import numpy as np
 
-from nodes import LinearLayer
+from nodes import LinearLayer, ReLU
 
 class Model:
-    def __init__(self, d_in: int, K: int):
-        self.layers = [LinearLayer(d_in, K)]
+    def __init__(self, d_in: int, d_hidden: int, K: int):
+        self.layers = [LinearLayer(d_in, d_hidden),
+                       ReLU(),
+                       LinearLayer(d_hidden, K)]
 
     def forward(self, X: np.ndarray) -> np.ndarray:
         """

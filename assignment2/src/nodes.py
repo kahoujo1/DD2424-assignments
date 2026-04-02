@@ -10,8 +10,7 @@ class Node:
 class LinearLayer(Node):
     def __init__(self, d_in, d_out):
         np.random.seed(42) # for reproducibility
-        # TODO: change for He initialization
-        self.W = np.random.randn(d_out, d_in) * 0.01
+        self.W = np.random.randn(d_out, d_in) * np.sqrt(2/d_in) # He initialization
         self.b = np.zeros((d_out, 1))
         self.X = None # save input for backward pass
         self.grad_W = 0
@@ -58,7 +57,7 @@ class LinearLayer(Node):
         self.grad_b = 0 
         self.X = None
 
-class ReLu(Node):
+class ReLU(Node):
     def __init__(self):
         self.X = None 
 
