@@ -10,6 +10,7 @@ class Node:
 class LinearLayer(Node):
     def __init__(self, d_in, d_out):
         np.random.seed(42) # for reproducibility
+        # TODO: change for He initialization
         self.W = np.random.randn(d_out, d_in) * 0.01
         self.b = np.zeros((d_out, 1))
         self.X = None # save input for backward pass
@@ -32,6 +33,12 @@ class LinearLayer(Node):
     def backward(self, grad):
         """
         Calculates the vector jacobian product and returns column vector gradient according to the chain rule.
+
+        Args:
+            grad (numpy array): Upper gradient.
+
+        returns:
+            numpy array: Gradient with respect to the input of the layer.
         """
         self.grad_W += grad@self.X.T
         self.grad_b += np.sum(grad, axis=1, keepdims=True)
@@ -51,6 +58,37 @@ class LinearLayer(Node):
         self.grad_b = 0 
         self.X = None
 
+class ReLu(Node):
+    def __init__(self):
+        self.X = None 
+
+    def forward(self, X):
+        """
+        Calculates the forward pass for a ReLU activation function, i.e. max(0, x).
+        
+        Args:
+            X (numpy array): Input for the layer.
+        
+        Returns:
+            numpy array: Output of the ReLU activation function.
+        """
+        self.X = X
+        return np.maximum(0, X)
+    
+    def backward(self, grad):
+        """
+        Calculates the vector jacobian product and returns column vector gradient according to the chain rule.
+
+        Args:
+            grad (numpy array): Upper (column vector) gradient.
+
+        Returns:
+            numpy array: Gradient with respect to the input of the layer.
+        """
+        assert self.X is not None, "The input has to be saved in cache"
+        grad_copy = grad.copy()
+        grad_copy[self.X <= 0] = 0 # mask out the negative values
+        return grad_copy
 
 class CrossEntropyLoss(Node):
     def __init__(self):
