@@ -32,6 +32,7 @@ class Optimizer:
         self.val_loss_history = []
         self.train_acc_history = []
         self.val_acc_history = []
+        self.lr_history = []
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
@@ -162,6 +163,68 @@ class Optimizer:
                 self.lr /= decay_factor
                 print(f'Epoch {epoch+1}/{num_epochs} - Learning rate decayed to {self.lr}')
 
+    def train_with_cyclical_lr(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, lr_min: float, lr_max: float, step_size: int, n_cycles: int, batch_size: int = 100, print_every: int = 0) -> None:
+        """
+        Trains the model using a cyclical learning rate scheduler.
+        
+        Args:
+            X_train (numpy array): Training data of shape (D, N_train), where N_train is the number of training samples and D is the input dimensionality.
+            y_train (numpy array): Training labels of shape (N_train,), where N_train is the number of training samples.
+            X_val (numpy array): Validation data of shape (D, N_val), where N_val is the number of validation samples and D is the input dimensionality.
+            y_val (numpy array): Validation labels of shape (N_val,), where N_val is the number of validation samples.
+            lr_min (float): The minimum learning rate for the cyclical schedule.
+            lr_max (float): The maximum learning rate for the cyclical schedule.
+            step_size (int): The number of update steps in half a cycle (i.e. the number of steps to take from lr_min to lr_max and vice versa).
+            n_cycles (int): The number of cycles in the training process.
+            batch_size (int, optional): The size of each mini-batch. Defaults to 100.
+            print_every (int, optional): If greater than 0, prints training progress every print_every update steps. Defaults to 0 (no printing).
+        """
+        # transform y to one hot encoding
+        N_train = X_train.shape[1]
+        N_val = X_val.shape[1]
+        K = 10
+        Y_train = np.zeros((K, N_train))
+        Y_train[y_train, np.arange(N_train)] = 1
+        Y_val = np.zeros((K, N_val))
+        Y_val[y_val, np.arange(N_val)] = 1
+        N_batches = N_train // batch_size # number of batches per epoch
+        for cycle in range(n_cycles):
+            for step in range(2 * step_size):
+                # compute learning rate
+                cycle_progress = step / (2 * step_size)
+                if cycle_progress < 0.5:
+                    lr = lr_min + 2 * cycle_progress * (lr_max - lr_min)
+                else:
+                    lr = lr_max - 2 * (cycle_progress - 0.5) * (lr_max - lr_min)
+                self.lr = lr
+                self.lr_history.append(lr)
+                # split to batches after end of epoch
+                idx = (cycle * 2 * step_size + step) % N_batches
+                if idx == 0:
+                    perm = np.random.permutation(N_train)
+                    X_train_shuffled = X_train[:, perm]
+                    Y_train_shuffled = Y_train[:, perm]
+                    # flip each image in the batch with the specified probability
+                    if self.vertical_flip_prob > 0:
+                        flip_mask = np.random.rand(N_train) < self.vertical_flip_prob
+                        X_train_shuffled[:, flip_mask] = self.flip_vertically(X_train_shuffled[:, flip_mask])
+                X_batch = X_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
+                Y_batch = Y_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
+                self.step(X_batch, Y_batch)
+                # compute training and validation loss and accuracy for tracking
+                if (step % 100 == 0):
+                    self.train_cost_history.append(self.compute_loss(X_train, Y_train))
+                    self.val_cost_history.append(self.compute_loss(X_val, Y_val))
+                    self.train_loss_history.append(self.compute_loss(X_train, Y_train) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
+                    self.val_loss_history.append(self.compute_loss(X_val, Y_val) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
+                    self.train_acc_history.append(self.compute_accuracy(X_train, y_train))
+                    self.val_acc_history.append(self.compute_accuracy(X_val, y_val))
+                # print training progress
+                if print_every > 0 and (cycle * 2 * step_size + step + 1) % print_every == 0:
+                    print(f'Update step {cycle * 2 * step_size + step + 1} - Train Loss: {self.train_loss_history[-1]:.4f}, Val Loss: {self.val_loss_history[-1]:.4f}, Train Acc: {self.train_acc_history[-1]:.4f}, Val Acc: {self.val_acc_history[-1]:.4f}, LR: {self.lr:.6f}')
+
+                
+
     def plot_training_progress(self) -> None:
         """
         Plots the training and validation loss and accuracy curves.
@@ -197,6 +260,20 @@ class Optimizer:
         plt.title('Training and Validation Accuracy')
         plt.grid()
         plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+    def plot_learning_rate_history(self) -> None:
+        """
+        Plots the learning rate history (useful for cyclical learning rate).
+        """
+        steps = np.arange(1, len(self.lr_history) + 1)
+        plt.figure(figsize=(6, 5))
+        plt.plot(steps, self.lr_history)
+        plt.xlabel('Update Step')
+        plt.ylabel('Learning Rate')
+        plt.title('Learning Rate History')
+        plt.grid()
         plt.tight_layout()
         plt.show()
 
