@@ -188,40 +188,39 @@ class Optimizer:
         Y_val = np.zeros((K, N_val))
         Y_val[y_val, np.arange(N_val)] = 1
         N_batches = N_train // batch_size # number of batches per epoch
-        for cycle in range(n_cycles):
-            for step in range(2 * step_size):
-                # compute learning rate
-                cycle_progress = step / (2 * step_size)
-                if cycle_progress < 0.5:
-                    lr = lr_min + 2 * cycle_progress * (lr_max - lr_min)
-                else:
-                    lr = lr_max - 2 * (cycle_progress - 0.5) * (lr_max - lr_min)
-                self.lr = lr
-                self.lr_history.append(lr)
-                # split to batches after end of epoch
-                idx = (cycle * 2 * step_size + step) % N_batches
-                if idx == 0:
-                    perm = np.random.permutation(N_train)
-                    X_train_shuffled = X_train[:, perm]
-                    Y_train_shuffled = Y_train[:, perm]
-                    # flip each image in the batch with the specified probability
-                    if self.vertical_flip_prob > 0:
-                        flip_mask = np.random.rand(N_train) < self.vertical_flip_prob
-                        X_train_shuffled[:, flip_mask] = self.flip_vertically(X_train_shuffled[:, flip_mask])
-                X_batch = X_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
-                Y_batch = Y_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
-                self.step(X_batch, Y_batch)
-                # compute training and validation loss and accuracy for tracking
-                if (step % 100 == 0):
-                    self.train_cost_history.append(self.compute_loss(X_train, Y_train))
-                    self.val_cost_history.append(self.compute_loss(X_val, Y_val))
-                    self.train_loss_history.append(self.compute_loss(X_train, Y_train) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
-                    self.val_loss_history.append(self.compute_loss(X_val, Y_val) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
-                    self.train_acc_history.append(self.compute_accuracy(X_train, y_train))
-                    self.val_acc_history.append(self.compute_accuracy(X_val, y_val))
-                # print training progress
-                if print_every > 0 and (cycle * 2 * step_size + step + 1) % print_every == 0:
-                    print(f'Update step {cycle * 2 * step_size + step + 1} - Train Loss: {self.train_loss_history[-1]:.4f}, Val Loss: {self.val_loss_history[-1]:.4f}, Train Acc: {self.train_acc_history[-1]:.4f}, Val Acc: {self.val_acc_history[-1]:.4f}, LR: {self.lr:.6f}')
+        for step in range(n_cycles * 2 * step_size):
+            # compute learning rate
+            cycle_progress = (step % (2 * step_size)) / (2 * step_size)
+            if cycle_progress < 0.5:
+                lr = lr_min + 2 * cycle_progress * (lr_max - lr_min)
+            else:
+                lr = lr_max - 2 * (cycle_progress - 0.5) * (lr_max - lr_min)
+            self.lr = lr
+            self.lr_history.append(lr)
+            # split to batches after end of epoch
+            idx = step % N_batches
+            if idx == 0:
+                perm = np.random.permutation(N_train)
+                X_train_shuffled = X_train[:, perm]
+                Y_train_shuffled = Y_train[:, perm]
+                # flip each image in the batch with the specified probability
+                if self.vertical_flip_prob > 0:
+                    flip_mask = np.random.rand(N_train) < self.vertical_flip_prob
+                    X_train_shuffled[:, flip_mask] = self.flip_vertically(X_train_shuffled[:, flip_mask])
+            X_batch = X_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
+            Y_batch = Y_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
+            self.step(X_batch, Y_batch)
+            # compute training and validation loss and accuracy for tracking
+            if (step % 100 == 0):
+                self.train_cost_history.append(self.compute_loss(X_train, Y_train))
+                self.val_cost_history.append(self.compute_loss(X_val, Y_val))
+                self.train_loss_history.append(self.compute_loss(X_train, Y_train) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
+                self.val_loss_history.append(self.compute_loss(X_val, Y_val) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
+                self.train_acc_history.append(self.compute_accuracy(X_train, y_train))
+                self.val_acc_history.append(self.compute_accuracy(X_val, y_val))
+            # print training progress
+            if print_every > 0 and (step + 1) % print_every == 0:
+                print(f'Update step {step + 1} - Train Loss: {self.train_loss_history[-1]:.4f}, Val Loss: {self.val_loss_history[-1]:.4f}, Train Acc: {self.train_acc_history[-1]:.4f}, Val Acc: {self.val_acc_history[-1]:.4f}, LR: {self.lr:.6f}')
 
                 
 
