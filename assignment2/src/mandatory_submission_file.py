@@ -1,12 +1,279 @@
-"""
-Optimizer class for training.
-"""
-
 import numpy as np
 import copy
 import matplotlib.pyplot as plt
-from model import Model
-from nodes import CrossEntropyLoss, LinearLayer, KBinaryCELoss
+
+class Node:
+    def forward(self, *inputs):
+        raise NotImplementedError
+
+    def backward(self, grad):
+        raise NotImplementedError
+
+class LinearLayer(Node):
+    def __init__(self, d_in, d_out):
+        np.random.seed(42) # for reproducibility
+        self.W = np.random.randn(d_out, d_in) * np.sqrt(2/d_in) # He initialization
+        self.b = np.zeros((d_out, 1))
+        self.X = None # save input for backward pass
+        self.grad_W = 0
+        self.grad_b = 0
+    
+    def forward(self, X):
+        """
+        Calculates the forward pass for a linear layer.
+
+        Args:
+            X (numpy array): Input data of shape (d_in, N) where N is the batch size.
+
+        Returns:
+            numpy array: Output of the linear layer W@X + b of shape (d_out, N).
+        """
+        self.X = X
+        return self.W@X + self.b
+    
+    def backward(self, grad):
+        """
+        Calculates the vector jacobian product and returns column vector gradient according to the chain rule.
+
+        Args:
+            grad (numpy array): Upper gradient.
+
+        returns:
+            numpy array: Gradient with respect to the input of the layer.
+        """
+        self.grad_W += grad@self.X.T
+        self.grad_b += np.sum(grad, axis=1, keepdims=True)
+        return self.W.T @ grad
+
+    def update_params(self, lr: np.float64):
+        """
+        Updates the layer parameters and resets gradient.
+
+        Args:
+            lr (np.float64): The learning rate.
+        """
+        assert self.X is not None, "The input has to be saved in cache"
+        self.W -= lr * self.grad_W
+        self.b -= lr * self.grad_b
+        self.grad_W = 0
+        self.grad_b = 0 
+        self.X = None
+
+class ReLU(Node):
+    def __init__(self):
+        self.X = None 
+
+    def forward(self, X):
+        """
+        Calculates the forward pass for a ReLU activation function, i.e. max(0, x).
+        
+        Args:
+            X (numpy array): Input for the layer.
+        
+        Returns:
+            numpy array: Output of the ReLU activation function.
+        """
+        self.X = X
+        return np.maximum(0, X)
+    
+    def backward(self, grad):
+        """
+        Calculates the vector jacobian product and returns column vector gradient according to the chain rule.
+
+        Args:
+            grad (numpy array): Upper (column vector) gradient.
+
+        Returns:
+            numpy array: Gradient with respect to the input of the layer.
+        """
+        assert self.X is not None, "The input has to be saved in cache"
+        grad_copy = grad.copy()
+        grad_copy[self.X <= 0] = 0 # mask out the negative values
+        return grad_copy
+
+class CrossEntropyLoss(Node):
+    def __init__(self):
+        self.P = None # save softmax probabilities for backward pass
+        self.Y = None # save true labels for backward pass
+
+    def forward(self, logits: np.array, Y: np.array) -> np.float64:
+        """
+        Calculates the forward pass for the cross-entropy loss with softmax.
+
+        Args:
+            logits (numpy array): Input logits of shape (K, N) where K is the number of classes and N is the batch size.
+            Y (numpy array): True probability distribution of the classes with size (K, N) (most often one hot encoding).
+
+        Returns:
+            numpy.float64: The average cross-entropy loss over the batch.
+        """
+        self.Y = Y
+        self.P = np.exp(logits)
+        reg = np.sum(self.P,axis = 0, keepdims=True)
+        self.P /= reg
+        loss = -np.sum(Y * np.log(self.P)) / logits.shape[1]
+        return loss
+    
+    def backward(self) -> np.array:
+        """
+        Calculates the gradient with respect to the input logits.
+
+        Returns:
+            numpy.array: Gradient of the loss with respect to the input logits, of shape (K, N).
+        """
+        return (self.P - self.Y) / self.P.shape[1]
+
+class KBinaryCELoss(Node):
+    def __init__(self):
+        self.P = None # save sigmoid probabilityes for backward pass
+        self.Y = None # save true labels for backward pass
+
+    def forward(self, logits: np.array, Y: np.array) -> np.float64:
+        """
+        Calculates the forward pass for K-binary cross-entropy loss with sigmoid.
+        
+        Args:
+            logits (numpy array): Input logits of shape (K, N) where K is the number of classes and N is the batch size.
+            Y (numpy array): True probability distribution of the classes with size (K, N), where each column is a one-hot encoded vector.
+
+        Returns:
+            numpy.float64: The average binary cross-entropy loss over the batch.
+        """
+        self.Y = Y
+        self.P = 1 / (1 + np.exp(-logits))
+        # average over batch
+        eps = 1e-12
+        P_clipped = np.clip(self.P, eps, 1 - eps)   
+        loss = -np.sum(Y*np.log(P_clipped) + (1-Y)*np.log(1-P_clipped)) / (logits.shape[1] * logits.shape[0])
+        return loss
+    
+    def backward(self) -> np.array:
+        """
+        Calculates the gradient with respect to the input logits.
+
+        Returns:
+            numpy.array: Gradient of the loss with respect to the input logits, of shape (K, N).
+        """
+        return (self.P - self.Y) / (self.P.shape[1] * self.P.shape[0])
+
+class Model:
+    def __init__(self, d_in: int, d_hidden: int, K: int):
+        self.layers = [LinearLayer(d_in, d_hidden),
+                       ReLU(),
+                       LinearLayer(d_hidden, K)]
+
+    def forward(self, X: np.ndarray) -> np.ndarray:
+        """
+        Performs the forward pass of the model.
+        
+        Args:
+            X (numpy array): Input data of shape (D, N) where N is the batch size and D is the dimensionality.
+
+        Returns:
+            numpy array: Output logits of shape (K, N) where K is the number of classes.
+        """
+        for layer in self.layers:
+            X = layer.forward(X)
+        return X
+
+    def backward(self, grad: np.ndarray) -> None:
+        """
+        Performs the backward pass of the model.
+
+        Args:
+            grad (numpy array): Gradient of the loss with respect to the output logits.
+        """
+        for layer in reversed(self.layers):
+            grad = layer.backward(grad)
+
+    def update_params(self, lr: np.float64) -> None:
+        """
+        Updates the model parameters.
+        
+        Args:
+            lr (np.float64): The learning rate.
+        """
+        for layer in self.layers:
+            if isinstance(layer, LinearLayer):
+                layer.update_params(lr)
+
+class Scaler:
+    def __init__(self):
+        self.mean = None
+        self.std = None
+    
+    def fit(self, X: np.array) -> None:
+        """
+        Calculates the mean and stardard deviation from the supplied dataset.
+
+        Args:
+            X (np.array): dataset matrix of shape (D, N) where N is the number of samples, and D is the dimensionality.
+        """
+        self.mean = np.mean(X, axis = 1, keepdims=True)
+        self.std = np.std(X, axis = 1, keepdims=True)
+
+    def transform(self, X: np.array) -> np.array:
+        """
+        Transforms supplied dataset by centering and scaling using precomputed mean and standard deviation.
+
+        Args:
+            X (np.array): dataset matrix of shape (D, N) where N is the number of samples, and D is the dimensionality.
+        """
+        if self.mean is None or self.std is None:
+            raise ValueError("Scaler has not been fitted yet!")
+        return (X - self.mean) / self.std
+    
+    def fit_transform(self, X: np.array) -> np.array:
+        """
+        Fits the scaler to the supplied dataset and then transforms it.
+
+        Args:
+            X (np.array): dataset matrix of shape (D, N) where N is the number of samples, and D is the dimensionality.
+        """
+        self.fit(X)
+        return self.transform(X)
+    
+def load_batch(batchname: str):
+    """
+    Loads data from the CIFAR-10 dataset.
+
+    Args: 
+        batchname (string): the name of the batch to load, e.g. 'data_batch_1'
+
+    Returns:
+        Array of [X, Y, y] where
+        - X contains the flattened image pixel data of shape (32x32x3, N)
+        - Y is the true probability class distribution of shape (K, N) (one hot encoding)'
+        - y is a vector of true labels (N,)
+    """
+    # Load a batch of training data
+    cifar_dir = '../../assignment1/data/cifar-10-batches-py/'
+    with open(cifar_dir + batchname, 'rb') as fo:
+        dict = pickle.load(fo, encoding='bytes')
+    # Extract the image data and cast to float from the dict dictionary
+    X = dict[b'data'].astype(np.float64) / 255.0
+    X = X.transpose()
+    nn = X.shape[1]
+    # extract the labels
+    y = dict[b'labels']
+    y = np.array(y)
+    # Create one hot-encoding of the labels
+    K = 10
+    Y = np.zeros((K, nn))
+    Y[y, np.arange(nn)] = 1
+    return X, Y, y
+
+def calculate_mean_grad_difference(grad1: np.ndarray, grad2: np.ndarray) -> np.float64:
+    """
+    Calculates the mean relative error between two gradients.
+    Args:
+        grad1 (numpy array): The first gradient to compare.
+        grad2 (numpy array): The second gradient to compare.
+    Returns:
+        numpy.float64: The mean relative error between the two gradients.
+    """
+    denum = max(1e-8, np.mean(np.abs(grad1) + np.abs(grad2)))
+    return np.mean(np.abs(grad1 - grad2) / denum)
 
 class Optimizer:
     def __init__(self, model: Model, loss_fn: CrossEntropyLoss | KBinaryCELoss, lr: np.float64, reg: np.float64, vertical_flip_prob: float = 0):
@@ -368,3 +635,38 @@ class Optimizer:
                         best_params = (epoch, lr, reg, batch_size)
         print(f"Final best validation accuracy: {best_val_acc}")
         print(f"Best parameters: epoch={best_params[0]}, lr={best_params[1]}, reg={best_params[2]}, batch_size={best_params[3]}")
+
+def main():
+    # Load all data batches
+    X_test, Y_test, y_test = load_batch("test_batch")
+
+    X, Y, y = load_batch("data_batch_1")
+    print("Shape for data batch 1:")
+    print(X.shape, Y.shape, y.shape)
+    for i in range(2,6):
+        X_temp, Y_temp, y_temp = load_batch(f"data_batch_{i}")
+        X = np.concatenate((X, X_temp), axis=1)
+        Y = np.concatenate((Y, Y_temp), axis=1)
+        y = np.concatenate((y, y_temp))
+    # split into training and validation sets
+    X_train = X[:, :45000]
+    y_train = y[:45000]
+    X_val = X[:, 45000:]
+    y_val = y[45000:]
+    # scale the data
+    scaler = Scaler()
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test = scaler.transform(X_test)
+    n_batch = 100
+    N = X_train.shape[1]
+    n_s = int(2 * np.floor(N / n_batch))
+    model = Model(32*32*3, 50, 10)
+    loss = CrossEntropyLoss()
+    optimizer = Optimizer(model, loss, lr=0.1, reg=0.001, vertical_flip_prob=0.5)
+    optimizer.train_with_cyclical_lr(X_train, y_train, X_val, y_val, lr_min = 1e-5, lr_max = 1e-1, step_size=n_s, n_cycles=3, batch_size=n_batch, print_every=0)
+    print("test accuracy: ", optimizer.compute_accuracy(X_test, y_test))
+    optimizer.plot_cyclical_lr_training_progress()
+
+if __name__ == "__main__":
+    main()
