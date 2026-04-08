@@ -332,6 +332,35 @@ class Optimizer:
         
         return X_flipped
     
+    def translate_batch(self, X: np.ndarray) -> np.ndarray:
+        """
+        Translates the input images by a random amount in the range [-16, 16] pixels in both x and y directions.
+
+        Args:
+            X (numpy array): Input batch of shape (D, N), where N is the number of samples and D is the dimensionality.
+
+        Returns:
+            numpy array: Translated images of shape (D, N).
+        """
+        N = X.shape[1]
+        X_reshaped = X.reshape((32, 32, 3, N), order='F')
+        X_translated = np.zeros_like(X_reshaped)
+        for i in range(N):
+            tx = np.random.randint(-16, 17)
+            ty = np.random.randint(-16, 17)
+            X_translated[:, :, :, i] = np.roll(X_reshaped[:, :, :, i], shift=(tx, ty), axis=(0, 1))
+            # mask out the rolled in pixels with zeros
+            if tx > 0:
+                X_translated[:tx, :, :, i] = 0
+            elif tx < 0:
+                X_translated[tx:, :, :, i] = 0
+            if ty > 0:
+                X_translated[:, :ty, :, i] = 0  
+            elif ty < 0:
+                X_translated[:, ty:, :, i] = 0
+        X_translated = X_translated.reshape((32*32*3, N), order='F')
+        return X_translated
+    
     def grid_search(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, lr_values: np.ndarray, reg_values: np.ndarray, batch_values:np.ndarray) -> None:
         """
         Performs a grid search over the specified parameters, to find the best combination.
