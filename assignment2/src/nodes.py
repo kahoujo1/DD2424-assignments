@@ -89,6 +89,50 @@ class ReLU(Node):
         grad_copy[self.X <= 0] = 0 # mask out the negative values
         return grad_copy
 
+class Dropout(Node):
+    def __init__(self, p: np.float64):
+        """
+        Initializes the Dropout layer.
+
+        Args:
+            p (numpy.float64): The dropout probability/
+        """
+        self.p = p
+        self.mask = None
+        self.training = False
+    
+    def set_training(self, training: bool):
+        """
+        Sets the mode of the Dropout layer.
+
+        Args:
+            training (bool): If True, the layer is in training mode; if False, it is in evaluation mode.
+        """
+        self.training = training
+
+    def forward(self, X) -> np.array:
+        """
+        Calculates the forward pass for a Dropout layer.
+        
+        Args:
+            X (numpy array): Input for the layer (assuming activation output).
+        
+        Returns:
+            numpy array: Output of the Dropout layer.
+        """
+        if self.training:
+            self.mask = (np.random.rand(*X.shape) > self.p) / (1 - self.p) # inverted dropout
+            return X * self.mask
+        else:
+            return X
+    
+    def backward(self, grad) -> np.array:
+        assert self.mask is not None, "The mask has to be saved in cache"
+        if self.training:
+            return grad * self.mask
+        else:
+            return grad
+
 class CrossEntropyLoss(Node):
     def __init__(self):
         self.P = None # save softmax probabilities for backward pass
