@@ -99,6 +99,7 @@ class Optimizer:
             X (numpy array): Input batch of shape (D, N) where N is the batch size and D is the dimensionality.
             Y (numpy array): True labels of shape (K, N) where K is the number of classes and N is the batch size.
         """      
+        self.train()
         # forward pass
         loss = self.compute_loss(X, Y)
 
@@ -152,6 +153,7 @@ class Optimizer:
                 Y_batch = Y_train_shuffled[:, i:i+batch_size]
                 self.step(X_batch, Y_batch)
             # compute training and validation loss and accuracy for tracking
+            self.eval()
             self.train_cost_history.append(self.compute_loss(X_train, Y_train))
             self.val_cost_history.append(self.compute_loss(X_val, Y_val))
             self.train_loss_history.append(self.compute_loss(X_train, Y_train) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
@@ -213,6 +215,7 @@ class Optimizer:
             self.step(X_batch, Y_batch)
             # compute training and validation loss and accuracy for tracking
             if ((step + 1) % 100 == 0 or step == 0):
+                self.eval()
                 self.train_cost_history.append(self.compute_loss(X_train, Y_train))
                 self.val_cost_history.append(self.compute_loss(X_val, Y_val))
                 self.train_loss_history.append(self.compute_loss(X_train, Y_train) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
@@ -397,3 +400,15 @@ class Optimizer:
                         best_params = (epoch, lr, reg, batch_size)
         print(f"Final best validation accuracy: {best_val_acc}")
         print(f"Best parameters: epoch={best_params[0]}, lr={best_params[1]}, reg={best_params[2]}, batch_size={best_params[3]}")
+    
+    def train(self):
+        """
+        Sets the model to training mode.
+        """
+        self.model.set_train_mode(True)
+
+    def eval(self):
+        """
+        Sets the model to evaluation mode.
+        """
+        self.model.set_train_mode(False)
