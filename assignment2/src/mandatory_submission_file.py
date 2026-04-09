@@ -1,7 +1,8 @@
 import numpy as np
 import copy
 import matplotlib.pyplot as plt
-
+from torch_gradient_computations import ComputeGradsWithTorch
+import pickle
 class Node:
     def forward(self, *inputs):
         raise NotImplementedError
@@ -479,7 +480,7 @@ class Optimizer:
             Y_batch = Y_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
             self.step(X_batch, Y_batch)
             # compute training and validation loss and accuracy for tracking
-            if (step % 100 == 0):
+            if ((step+1) % 100 == 0 or step == 0):
                 self.train_cost_history.append(self.compute_loss(X_train, Y_train))
                 self.val_cost_history.append(self.compute_loss(X_val, Y_val))
                 self.train_loss_history.append(self.compute_loss(X_train, Y_train) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
@@ -537,8 +538,9 @@ class Optimizer:
         """
         steps = np.array(self.plot_update_value)
         plt.figure(figsize=(6, 5))
-        plt.plot(steps, self.train_loss_history, label='Train Loss')
-        plt.plot(steps, self.val_loss_history, label='Val Loss')
+        plt.plot(steps, self.train_loss_history, label='Train Loss', linewidth=2.5)
+        plt.plot(steps, self.val_loss_history, label='Val Loss', linewidth=2.5)
+        plt.autoscale(enable=True, axis='x', tight=True)
         plt.xlabel('Update step')
         plt.ylabel('Loss')
         plt.title('Training and Validation Loss')
@@ -548,8 +550,9 @@ class Optimizer:
         plt.show()
         
         plt.figure(figsize=(6, 5))
-        plt.plot(steps, self.train_cost_history, label='Train Cost (including regularization)')
-        plt.plot(steps, self.val_cost_history, label='Val Cost (including regularization)')
+        plt.plot(steps, self.train_cost_history, label='Train Cost (including regularization)', linewidth=2.5)
+        plt.plot(steps, self.val_cost_history, label='Val Cost (including regularization)', linewidth=2.5)
+        plt.autoscale(enable=True, axis='x', tight=True)
         plt.xlabel('Update step')
         plt.ylabel('Cost')
         plt.title('Training and Validation Cost')
@@ -559,9 +562,10 @@ class Optimizer:
         plt.show()
 
         plt.figure(figsize=(6, 5))
-        plt.plot(steps, self.train_acc_history, label='Train Accuracy')
-        plt.plot(steps, self.val_acc_history, label='Val Accuracy')
+        plt.plot(steps, self.train_acc_history, label='Train Accuracy', linewidth=2.5)
+        plt.plot(steps, self.val_acc_history, label='Val Accuracy', linewidth=2.5)
         plt.xlabel('Update step')
+        plt.autoscale(enable=True, axis='x', tight=True)
         plt.ylabel('Accuracy')
         plt.title('Training and Validation Accuracy')
         plt.grid()
@@ -636,6 +640,139 @@ class Optimizer:
         print(f"Final best validation accuracy: {best_val_acc}")
         print(f"Best parameters: epoch={best_params[0]}, lr={best_params[1]}, reg={best_params[2]}, batch_size={best_params[3]}")
 
+def test_gradient_computation():
+    X, Y, y = load_batch("data_batch_1")
+    scaler = Scaler()
+    X_train = scaler.fit_transform(X)
+    model = Model(32*32*3, 100, 10)
+    loss_node = CrossEntropyLoss()
+    # calculate torch gradient
+    grads_torch = ComputeGradsWithTorch(X_train[:, :100], y[:100], model.layers[0].W, model.layers[0].b, model.layers[2].W, model.layers[2].b)
+    Y_pred = model.forward(X_train[:,:100])
+    loss = loss_node.forward(Y_pred, Y[:, :100])
+    print(f"loss computed with my implementation:{loss}")
+    # calculate my gradient
+    grad = loss_node.backward()
+    model.backward(grad)
+    # compare the gradients
+    W1_diff = calculate_mean_grad_difference(model.layers[0].grad_W.flatten(), grads_torch["W1"].flatten())
+    W2_diff = calculate_mean_grad_difference(model.layers[2].grad_W.flatten(), grads_torch["W2"].flatten())
+    b1_diff = calculate_mean_grad_difference(model.layers[0].grad_b.flatten(), grads_torch["b1"].flatten())
+    b2_diff = calculate_mean_grad_difference(model.layers[2].grad_b.flatten(), grads_torch["b2"].flatten())
+
+    print("First layer gradients:")
+    print(f"Mean absolute difference in W1 gradients: {W1_diff}")
+    print(f"Mean absolute difference in b1 gradients: {b1_diff}")
+    print("Second layer gradients:")
+    print(f"Mean absolute difference in W2 gradients: {W2_diff}")
+    print(f"Mean absolute difference in b2 gradients: {b2_diff}")
+
+def excercise_3():
+    model = Model(32*32*3, 50, 10)
+    optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.001, reg=0.01)
+    scaler = Scaler()
+    X_train, Y_train, y_train = load_batch("data_batch_1")
+    X_val, Y_val, y_val = load_batch("data_batch_2")
+    X_test, Y_test, y_test = load_batch("test_batch")
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test = scaler.transform(X_test)
+    optimizer.train_with_cyclical_lr(X_train, y_train, X_val, y_val, lr_min = 1e-5, lr_max = 1e-1, step_size=500, n_cycles=1, batch_size=100, print_every=100)
+    optimizer.plot_cyclical_lr_training_progress()
+    print("test accuracy: ", optimizer.compute_accuracy(X_test, y_test))
+
+def excercise_4():
+    model = Model(32*32*3, 50, 10)
+    optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.0, reg=0.01)
+    scaler = Scaler()
+    X_train, Y_train, y_train = load_batch("data_batch_1")
+    X_val, Y_val, y_val = load_batch("data_batch_2")
+    X_test, Y_test, y_test = load_batch("test_batch")
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test = scaler.transform(X_test)
+    optimizer.train_with_cyclical_lr(X_train, y_train, X_val, y_val, lr_min = 1e-5, lr_max = 1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=500)
+    optimizer.plot_cyclical_lr_training_progress()
+    print("test accuracy: ", optimizer.compute_accuracy(X_test, y_test))
+
+def coarse_search():
+    # load all batches and combine them for training
+    X_test, Y_test, y_test = load_batch("test_batch")
+
+    X, Y, y = load_batch("data_batch_1")
+    for i in range(2,6):
+        X_temp, Y_temp, y_temp = load_batch(f"data_batch_{i}")
+        X = np.concatenate((X, X_temp), axis=1)
+        Y = np.concatenate((Y, Y_temp), axis=1)
+        y = np.concatenate((y, y_temp))
+    print("Shape for combined data:")
+    print(X.shape, Y.shape, y.shape)
+    # split into training and validation sets
+    X_train = X[:, :45000]
+    y_train = y[:45000]
+    X_val = X[:, 45000:]
+    y_val = y[45000:]
+    # scale the data
+    scaler = Scaler()
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test = scaler.transform(X_test)
+    n_batch = 100
+    N = X_train.shape[1]
+    n_s = int(2 * np.floor(N / n_batch))
+    # create uniform grid of regularization parameters
+    reg_params = 10**np.linspace(-5, 0, num=10)
+    results = {}
+    for lam in reg_params:
+        # print(f"Training with regularization parameter: {lam}")
+        model = Model(32*32*3, 50, 10)
+        optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.0, reg=lam)
+        optimizer.train_with_cyclical_lr(X_train, y_train, X_val, y_val, lr_min = 1e-5, lr_max = 1e-1, step_size=n_s, n_cycles=3, batch_size=n_batch, print_every=0)
+        val_acc = optimizer.compute_accuracy(X_val, y_val)
+        results[lam] = val_acc
+        print(f"Regularization parameter: {lam}, Validation Accuracy: {val_acc:.4f}")
+    best_reg = max(results, key=results.get)
+    print(f"Best regularization parameter: {best_reg}, Validation Accuracy: {results[best_reg]:.4f}")
+
+def fine_search():
+    # load all batches and combine them for training
+    X_test, Y_test, y_test = load_batch("test_batch")
+
+    X, Y, y = load_batch("data_batch_1")
+    for i in range(2,6):
+        X_temp, Y_temp, y_temp = load_batch(f"data_batch_{i}")
+        X = np.concatenate((X, X_temp), axis=1)
+        Y = np.concatenate((Y, Y_temp), axis=1)
+        y = np.concatenate((y, y_temp))
+    print("Shape for combined data:")
+    print(X.shape, Y.shape, y.shape)
+    # split into training and validation sets
+    X_train = X[:, :45000]
+    y_train = y[:45000]
+    X_val = X[:, 45000:]
+    y_val = y[45000:]
+    # scale the data
+    scaler = Scaler()
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test = scaler.transform(X_test)
+    n_batch = 100
+    N = X_train.shape[1]
+    n_s = int(2 * np.floor(N / n_batch))
+    # create uniform grid of regularization parameters
+    reg_params = 10**np.linspace(-3, -2, num=10)
+    results = {}
+    for lam in reg_params:
+        # print(f"Training with regularization parameter: {lam}")
+        model = Model(32*32*3, 50, 10)
+        optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.0, reg=lam)
+        optimizer.train_with_cyclical_lr(X_train, y_train, X_val, y_val, lr_min = 1e-5, lr_max = 1e-1, step_size=n_s, n_cycles=3, batch_size=n_batch, print_every=0)
+        val_acc = optimizer.compute_accuracy(X_val, y_val)
+        results[lam] = val_acc
+        print(f"Regularization parameter: {lam}, Validation Accuracy: {val_acc:.4f}")
+    best_reg = max(results, key=results.get)
+    print(f"Best regularization parameter: {best_reg}, Validation Accuracy: {results[best_reg]:.4f}")
+
 def main():
     # Load all data batches
     X_test, Y_test, y_test = load_batch("test_batch")
@@ -669,4 +806,9 @@ def main():
     optimizer.plot_cyclical_lr_training_progress()
 
 if __name__ == "__main__":
-    main()
+    #test_gradient_computation()
+    # excercise_3()
+    # excercise_4()
+    #coarse_search()
+    fine_search()
+    #main()

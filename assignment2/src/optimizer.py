@@ -9,7 +9,7 @@ from model import Model
 from nodes import CrossEntropyLoss, LinearLayer, KBinaryCELoss
 
 class Optimizer:
-    def __init__(self, model: Model, loss_fn: CrossEntropyLoss | KBinaryCELoss, lr: np.float64, reg: np.float64, vertical_flip_prob: float = 0):
+    def __init__(self, model: Model, loss_fn: CrossEntropyLoss | KBinaryCELoss, lr: np.float64, reg: np.float64, vertical_flip_prob: float = 0, do_batch_translation: bool = False):
         """
         Initializes the optimizer.
 
@@ -19,12 +19,14 @@ class Optimizer:
             lr (np.float64): The learning rate.
             reg (np.float64): The regularization parameter (lambda).
             vertical_flip_prob (float, optional): The probability of applying vertical flipping as a data augmentation technique. Defaults to 0 (no flipping).
+            do_batch_translation (bool, optional): Whether to apply random translation to the batch as a data augmentation technique. Defaults to False (no translation).
         """
         self.model = model
         self.loss_fn = loss_fn
         self.lr = lr
         self.reg = reg
         self.vertical_flip_prob = vertical_flip_prob
+        self.do_batch_translation = do_batch_translation
         # variables for tracking training progress
         self.train_cost_history = []
         self.val_cost_history = []
@@ -142,6 +144,8 @@ class Optimizer:
             if self.vertical_flip_prob > 0:
                 flip_mask = np.random.rand(N_train) < self.vertical_flip_prob
                 X_train_shuffled[:, flip_mask] = self.flip_vertically(X_train_shuffled[:, flip_mask])
+            if self.do_batch_translation:
+                X_train_shuffled = self.translate_batch(X_train_shuffled)
             # mini-batch training
             for i in range(0, N_train, batch_size):
                 X_batch = X_train_shuffled[:, i:i+batch_size]
@@ -202,11 +206,13 @@ class Optimizer:
                 if self.vertical_flip_prob > 0:
                     flip_mask = np.random.rand(N_train) < self.vertical_flip_prob
                     X_train_shuffled[:, flip_mask] = self.flip_vertically(X_train_shuffled[:, flip_mask])
+                if self.do_batch_translation:
+                    X_train_shuffled = self.translate_batch(X_train_shuffled)
             X_batch = X_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
             Y_batch = Y_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
             self.step(X_batch, Y_batch)
             # compute training and validation loss and accuracy for tracking
-            if (step % 100 == 0):
+            if ((step + 1) % 100 == 0 or step == 0):
                 self.train_cost_history.append(self.compute_loss(X_train, Y_train))
                 self.val_cost_history.append(self.compute_loss(X_val, Y_val))
                 self.train_loss_history.append(self.compute_loss(X_train, Y_train) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
@@ -334,7 +340,7 @@ class Optimizer:
     
     def translate_batch(self, X: np.ndarray) -> np.ndarray:
         """
-        Translates the input images by a random amount in the range [-16, 16] pixels in both x and y directions.
+        Translates the input images by a random amount in the range [-4, 4] pixels in both x and y directions.
 
         Args:
             X (numpy array): Input batch of shape (D, N), where N is the number of samples and D is the dimensionality.
@@ -346,8 +352,8 @@ class Optimizer:
         X_reshaped = X.reshape((32, 32, 3, N), order='F')
         X_translated = np.zeros_like(X_reshaped)
         for i in range(N):
-            tx = np.random.randint(-16, 17)
-            ty = np.random.randint(-16, 17)
+            tx = np.random.randint(-4, 5)
+            ty = np.random.randint(-4, 5)
             X_translated[:, :, :, i] = np.roll(X_reshaped[:, :, :, i], shift=(tx, ty), axis=(0, 1))
             # mask out the rolled in pixels with zeros
             if tx > 0:
