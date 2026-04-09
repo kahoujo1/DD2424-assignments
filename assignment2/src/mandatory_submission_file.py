@@ -778,18 +778,18 @@ def main():
     X_test, Y_test, y_test = load_batch("test_batch")
 
     X, Y, y = load_batch("data_batch_1")
-    print("Shape for data batch 1:")
-    print(X.shape, Y.shape, y.shape)
     for i in range(2,6):
         X_temp, Y_temp, y_temp = load_batch(f"data_batch_{i}")
         X = np.concatenate((X, X_temp), axis=1)
         Y = np.concatenate((Y, Y_temp), axis=1)
         y = np.concatenate((y, y_temp))
     # split into training and validation sets
-    X_train = X[:, :45000]
-    y_train = y[:45000]
-    X_val = X[:, 45000:]
-    y_val = y[45000:]
+    print("Shape for combined data:")
+    print(X.shape, Y.shape, y.shape)
+    X_train = X[:, :49000]
+    y_train = y[:49000]
+    X_val = X[:, 49000:]
+    y_val = y[49000:]
     # scale the data
     scaler = Scaler()
     X_train = scaler.fit_transform(X_train)
@@ -800,8 +800,9 @@ def main():
     n_s = int(2 * np.floor(N / n_batch))
     model = Model(32*32*3, 50, 10)
     loss = CrossEntropyLoss()
-    optimizer = Optimizer(model, loss, lr=0.1, reg=0.001, vertical_flip_prob=0.5)
+    optimizer = Optimizer(model, loss, lr=0.1, reg=0.0012915)
     optimizer.train_with_cyclical_lr(X_train, y_train, X_val, y_val, lr_min = 1e-5, lr_max = 1e-1, step_size=n_s, n_cycles=3, batch_size=n_batch, print_every=0)
+    print("validation accuracy: ", optimizer.compute_accuracy(X_val, y_val))
     print("test accuracy: ", optimizer.compute_accuracy(X_test, y_test))
     optimizer.plot_cyclical_lr_training_progress()
 
@@ -810,5 +811,5 @@ if __name__ == "__main__":
     # excercise_3()
     # excercise_4()
     #coarse_search()
-    fine_search()
-    #main()
+    #fine_search()
+    main()
