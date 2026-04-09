@@ -95,7 +95,7 @@ class Dropout(Node):
         Initializes the Dropout layer.
 
         Args:
-            p (numpy.float64): The dropout probability/
+            p (numpy.float64): The dropout probability.
         """
         self.p = p
         self.mask = None

@@ -6,9 +6,10 @@ import numpy as np
 from nodes import Dropout, LinearLayer, ReLU
 
 class Model:
-    def __init__(self, d_in: int, d_hidden: int, K: int):
+    def __init__(self, d_in: int, d_hidden: int, K: int, p : float = 0.0):
         self.layers = [LinearLayer(d_in, d_hidden),
                        ReLU(),
+                       Dropout(p=p),
                        LinearLayer(d_hidden, K)]
 
     def forward(self, X: np.ndarray) -> np.ndarray:
