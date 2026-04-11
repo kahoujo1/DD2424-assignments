@@ -202,9 +202,10 @@ class KBinaryCELoss(Node):
         return (self.P - self.Y) / (self.P.shape[1] * self.P.shape[0])
 
 class Model:
-    def __init__(self, d_in: int, d_hidden: int, K: int):
+    def __init__(self, d_in: int, d_hidden: int, K: int, p : float = 0.0):
         self.layers = [LinearLayer(d_in, d_hidden),
                        ReLU(),
+                       Dropout(p=p),
                        LinearLayer(d_hidden, K)]
 
     def forward(self, X: np.ndarray) -> np.ndarray:
@@ -242,6 +243,16 @@ class Model:
             if isinstance(layer, LinearLayer):
                 layer.update_params(lr)
 
+    def set_train_mode(self, mode: bool) -> None:
+        """
+        Sets the model to training or evaluation mode.
+        
+        Args:
+            mode (bool): If True, set to training mode. If False, set to evaluation mode.
+        """
+        for layer in self.layers:
+            if isinstance(layer, Dropout):
+                layer.set_training(mode)
 class Scaler:
     def __init__(self):
         self.mean = None
@@ -319,9 +330,8 @@ def calculate_mean_grad_difference(grad1: np.ndarray, grad2: np.ndarray) -> np.f
     """
     denum = max(1e-8, np.mean(np.abs(grad1) + np.abs(grad2)))
     return np.mean(np.abs(grad1 - grad2) / denum)
-
 class Optimizer:
-    def __init__(self, model: Model, loss_fn: CrossEntropyLoss | KBinaryCELoss, lr: np.float64, reg: np.float64, vertical_flip_prob: float = 0):
+    def __init__(self, model: Model, loss_fn: CrossEntropyLoss | KBinaryCELoss, lr: np.float64, reg: np.float64, vertical_flip_prob: float = 0, do_batch_translation: bool = False):
         """
         Initializes the optimizer.
 
@@ -331,12 +341,14 @@ class Optimizer:
             lr (np.float64): The learning rate.
             reg (np.float64): The regularization parameter (lambda).
             vertical_flip_prob (float, optional): The probability of applying vertical flipping as a data augmentation technique. Defaults to 0 (no flipping).
+            do_batch_translation (bool, optional): Whether to apply random translation to the batch as a data augmentation technique. Defaults to False (no translation).
         """
         self.model = model
         self.loss_fn = loss_fn
         self.lr = lr
         self.reg = reg
         self.vertical_flip_prob = vertical_flip_prob
+        self.do_batch_translation = do_batch_translation
         # variables for tracking training progress
         self.train_cost_history = []
         self.val_cost_history = []
@@ -409,6 +421,7 @@ class Optimizer:
             X (numpy array): Input batch of shape (D, N) where N is the batch size and D is the dimensionality.
             Y (numpy array): True labels of shape (K, N) where K is the number of classes and N is the batch size.
         """      
+        self.set_train_mode()
         # forward pass
         loss = self.compute_loss(X, Y)
 
@@ -424,7 +437,7 @@ class Optimizer:
         # update parameters
         self.model.update_params(self.lr)
     
-    def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, num_epochs: int, batch_size: int = 100, decaying_lr_epochs: int = 0, decay_factor: float = 10.0, print_every: int = 0) -> None:
+    def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, num_epochs: int, batch_size: int = 100, print_every: int = 0) -> None:
         """
         Trains the model.
 
@@ -435,8 +448,6 @@ class Optimizer:
             y_val (numpy array): Validation labels of shape (N_val,), where N_val is the number of validation samples.
             num_epochs (int): The number of epochs to train for.
             batch_size (int, optional): The size of each mini-batch. Defaults to 100.
-            decaying_lr_epochs (int, optional): If greater than 0, decays the learning rate by a factor of 10 every decaying_lr_epochs epochs. Defaults to 0 (no decay).
-            decay_factor (float, optional): The factor by which to decay the learning rate. Defaults to 10.0.
             print_every (int, optional): If greater than 0, prints training progress every print_every epochs. Defaults to 0 (no printing).
         """
         N_train = X_train.shape[1]
@@ -456,12 +467,15 @@ class Optimizer:
             if self.vertical_flip_prob > 0:
                 flip_mask = np.random.rand(N_train) < self.vertical_flip_prob
                 X_train_shuffled[:, flip_mask] = self.flip_vertically(X_train_shuffled[:, flip_mask])
+            if self.do_batch_translation:
+                X_train_shuffled = self.translate_batch(X_train_shuffled)
             # mini-batch training
             for i in range(0, N_train, batch_size):
                 X_batch = X_train_shuffled[:, i:i+batch_size]
                 Y_batch = Y_train_shuffled[:, i:i+batch_size]
                 self.step(X_batch, Y_batch)
             # compute training and validation loss and accuracy for tracking
+            self.set_eval_mode()
             self.train_cost_history.append(self.compute_loss(X_train, Y_train))
             self.val_cost_history.append(self.compute_loss(X_val, Y_val))
             self.train_loss_history.append(self.compute_loss(X_train, Y_train) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
@@ -471,10 +485,6 @@ class Optimizer:
             # print training progress
             if print_every > 0 and (epoch + 1) % print_every == 0:
                 print(f'Epoch {epoch+1}/{num_epochs} - Train Loss: {self.train_loss_history[-1]:.4f}, Val Loss: {self.val_loss_history[-1]:.4f}, Train Acc: {self.train_acc_history[-1]:.4f}, Val Acc: {self.val_acc_history[-1]:.4f}')
-            # decay learning rate if specified
-            if decaying_lr_epochs > 0 and (epoch + 1) % decaying_lr_epochs == 0:
-                self.lr /= decay_factor
-                print(f'Epoch {epoch+1}/{num_epochs} - Learning rate decayed to {self.lr}')
 
     def train_with_cyclical_lr(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, lr_min: float, lr_max: float, step_size: int, n_cycles: int, batch_size: int = 100, print_every: int = 0) -> None:
         """
@@ -520,11 +530,14 @@ class Optimizer:
                 if self.vertical_flip_prob > 0:
                     flip_mask = np.random.rand(N_train) < self.vertical_flip_prob
                     X_train_shuffled[:, flip_mask] = self.flip_vertically(X_train_shuffled[:, flip_mask])
+                if self.do_batch_translation:
+                    X_train_shuffled = self.translate_batch(X_train_shuffled)
             X_batch = X_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
             Y_batch = Y_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
             self.step(X_batch, Y_batch)
             # compute training and validation loss and accuracy for tracking
-            if ((step+1) % 100 == 0 or step == 0):
+            if ((step + 1) % 100 == 0 or step == 0):
+                self.set_eval_mode()
                 self.train_cost_history.append(self.compute_loss(X_train, Y_train))
                 self.val_cost_history.append(self.compute_loss(X_val, Y_val))
                 self.train_loss_history.append(self.compute_loss(X_train, Y_train) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
@@ -582,9 +595,8 @@ class Optimizer:
         """
         steps = np.array(self.plot_update_value)
         plt.figure(figsize=(6, 5))
-        plt.plot(steps, self.train_loss_history, label='Train Loss', linewidth=2.5)
-        plt.plot(steps, self.val_loss_history, label='Val Loss', linewidth=2.5)
-        plt.autoscale(enable=True, axis='x', tight=True)
+        plt.plot(steps, self.train_loss_history, label='Train Loss')
+        plt.plot(steps, self.val_loss_history, label='Val Loss')
         plt.xlabel('Update step')
         plt.ylabel('Loss')
         plt.title('Training and Validation Loss')
@@ -594,9 +606,8 @@ class Optimizer:
         plt.show()
         
         plt.figure(figsize=(6, 5))
-        plt.plot(steps, self.train_cost_history, label='Train Cost (including regularization)', linewidth=2.5)
-        plt.plot(steps, self.val_cost_history, label='Val Cost (including regularization)', linewidth=2.5)
-        plt.autoscale(enable=True, axis='x', tight=True)
+        plt.plot(steps, self.train_cost_history, label='Train Cost (including regularization)')
+        plt.plot(steps, self.val_cost_history, label='Val Cost (including regularization)')
         plt.xlabel('Update step')
         plt.ylabel('Cost')
         plt.title('Training and Validation Cost')
@@ -606,10 +617,9 @@ class Optimizer:
         plt.show()
 
         plt.figure(figsize=(6, 5))
-        plt.plot(steps, self.train_acc_history, label='Train Accuracy', linewidth=2.5)
-        plt.plot(steps, self.val_acc_history, label='Val Accuracy', linewidth=2.5)
+        plt.plot(steps, self.train_acc_history, label='Train Accuracy')
+        plt.plot(steps, self.val_acc_history, label='Val Accuracy')
         plt.xlabel('Update step')
-        plt.autoscale(enable=True, axis='x', tight=True)
         plt.ylabel('Accuracy')
         plt.title('Training and Validation Accuracy')
         plt.grid()
@@ -653,6 +663,35 @@ class Optimizer:
         
         return X_flipped
     
+    def translate_batch(self, X: np.ndarray) -> np.ndarray:
+        """
+        Translates the input images by a random amount in the range [-3, 3] pixels in both x and y directions.
+
+        Args:
+            X (numpy array): Input batch of shape (D, N), where N is the number of samples and D is the dimensionality.
+
+        Returns:
+            numpy array: Translated images of shape (D, N).
+        """
+        N = X.shape[1]
+        X_reshaped = X.reshape((32, 32, 3, N), order='F')
+        X_translated = np.zeros_like(X_reshaped)
+        for i in range(N):
+            tx = np.random.randint(-3, 4)
+            ty = np.random.randint(-3, 4)
+            X_translated[:, :, :, i] = np.roll(X_reshaped[:, :, :, i], shift=(tx, ty), axis=(0, 1))
+            # mask out the rolled in pixels with zeros
+            if tx > 0:
+                X_translated[:tx, :, :, i] = 0
+            elif tx < 0:
+                X_translated[tx:, :, :, i] = 0
+            if ty > 0:
+                X_translated[:, :ty, :, i] = 0  
+            elif ty < 0:
+                X_translated[:, ty:, :, i] = 0
+        X_translated = X_translated.reshape((32*32*3, N), order='F')
+        return X_translated
+    
     def grid_search(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, lr_values: np.ndarray, reg_values: np.ndarray, batch_values:np.ndarray) -> None:
         """
         Performs a grid search over the specified parameters, to find the best combination.
@@ -683,139 +722,19 @@ class Optimizer:
                         best_params = (epoch, lr, reg, batch_size)
         print(f"Final best validation accuracy: {best_val_acc}")
         print(f"Best parameters: epoch={best_params[0]}, lr={best_params[1]}, reg={best_params[2]}, batch_size={best_params[3]}")
+    
+    def set_train_mode(self):
+        """
+        Sets the model to training mode.
+        """
+        self.model.set_train_mode(True)
 
-def test_gradient_computation():
-    X, Y, y = load_batch("data_batch_1")
-    scaler = Scaler()
-    X_train = scaler.fit_transform(X)
-    model = Model(32*32*3, 100, 10)
-    loss_node = CrossEntropyLoss()
-    # calculate torch gradient
-    grads_torch = ComputeGradsWithTorch(X_train[:, :100], y[:100], model.layers[0].W, model.layers[0].b, model.layers[2].W, model.layers[2].b)
-    Y_pred = model.forward(X_train[:,:100])
-    loss = loss_node.forward(Y_pred, Y[:, :100])
-    print(f"loss computed with my implementation:{loss}")
-    # calculate my gradient
-    grad = loss_node.backward()
-    model.backward(grad)
-    # compare the gradients
-    W1_diff = calculate_mean_grad_difference(model.layers[0].grad_W.flatten(), grads_torch["W1"].flatten())
-    W2_diff = calculate_mean_grad_difference(model.layers[2].grad_W.flatten(), grads_torch["W2"].flatten())
-    b1_diff = calculate_mean_grad_difference(model.layers[0].grad_b.flatten(), grads_torch["b1"].flatten())
-    b2_diff = calculate_mean_grad_difference(model.layers[2].grad_b.flatten(), grads_torch["b2"].flatten())
+    def set_eval_mode(self):
+        """
+        Sets the model to evaluation mode.
+        """
+        self.model.set_train_mode(False)
 
-    print("First layer gradients:")
-    print(f"Mean absolute difference in W1 gradients: {W1_diff}")
-    print(f"Mean absolute difference in b1 gradients: {b1_diff}")
-    print("Second layer gradients:")
-    print(f"Mean absolute difference in W2 gradients: {W2_diff}")
-    print(f"Mean absolute difference in b2 gradients: {b2_diff}")
-
-def excercise_3():
-    model = Model(32*32*3, 50, 10)
-    optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.001, reg=0.01)
-    scaler = Scaler()
-    X_train, Y_train, y_train = load_batch("data_batch_1")
-    X_val, Y_val, y_val = load_batch("data_batch_2")
-    X_test, Y_test, y_test = load_batch("test_batch")
-    X_train = scaler.fit_transform(X_train)
-    X_val = scaler.transform(X_val)
-    X_test = scaler.transform(X_test)
-    optimizer.train_with_cyclical_lr(X_train, y_train, X_val, y_val, lr_min = 1e-5, lr_max = 1e-1, step_size=500, n_cycles=1, batch_size=100, print_every=100)
-    optimizer.plot_cyclical_lr_training_progress()
-    print("test accuracy: ", optimizer.compute_accuracy(X_test, y_test))
-
-def excercise_4():
-    model = Model(32*32*3, 50, 10)
-    optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.0, reg=0.01)
-    scaler = Scaler()
-    X_train, Y_train, y_train = load_batch("data_batch_1")
-    X_val, Y_val, y_val = load_batch("data_batch_2")
-    X_test, Y_test, y_test = load_batch("test_batch")
-    X_train = scaler.fit_transform(X_train)
-    X_val = scaler.transform(X_val)
-    X_test = scaler.transform(X_test)
-    optimizer.train_with_cyclical_lr(X_train, y_train, X_val, y_val, lr_min = 1e-5, lr_max = 1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=500)
-    optimizer.plot_cyclical_lr_training_progress()
-    print("test accuracy: ", optimizer.compute_accuracy(X_test, y_test))
-
-def coarse_search():
-    # load all batches and combine them for training
-    X_test, Y_test, y_test = load_batch("test_batch")
-
-    X, Y, y = load_batch("data_batch_1")
-    for i in range(2,6):
-        X_temp, Y_temp, y_temp = load_batch(f"data_batch_{i}")
-        X = np.concatenate((X, X_temp), axis=1)
-        Y = np.concatenate((Y, Y_temp), axis=1)
-        y = np.concatenate((y, y_temp))
-    print("Shape for combined data:")
-    print(X.shape, Y.shape, y.shape)
-    # split into training and validation sets
-    X_train = X[:, :45000]
-    y_train = y[:45000]
-    X_val = X[:, 45000:]
-    y_val = y[45000:]
-    # scale the data
-    scaler = Scaler()
-    X_train = scaler.fit_transform(X_train)
-    X_val = scaler.transform(X_val)
-    X_test = scaler.transform(X_test)
-    n_batch = 100
-    N = X_train.shape[1]
-    n_s = int(2 * np.floor(N / n_batch))
-    # create uniform grid of regularization parameters
-    reg_params = 10**np.linspace(-5, 0, num=10)
-    results = {}
-    for lam in reg_params:
-        # print(f"Training with regularization parameter: {lam}")
-        model = Model(32*32*3, 50, 10)
-        optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.0, reg=lam)
-        optimizer.train_with_cyclical_lr(X_train, y_train, X_val, y_val, lr_min = 1e-5, lr_max = 1e-1, step_size=n_s, n_cycles=3, batch_size=n_batch, print_every=0)
-        val_acc = optimizer.compute_accuracy(X_val, y_val)
-        results[lam] = val_acc
-        print(f"Regularization parameter: {lam}, Validation Accuracy: {val_acc:.4f}")
-    best_reg = max(results, key=results.get)
-    print(f"Best regularization parameter: {best_reg}, Validation Accuracy: {results[best_reg]:.4f}")
-
-def fine_search():
-    # load all batches and combine them for training
-    X_test, Y_test, y_test = load_batch("test_batch")
-
-    X, Y, y = load_batch("data_batch_1")
-    for i in range(2,6):
-        X_temp, Y_temp, y_temp = load_batch(f"data_batch_{i}")
-        X = np.concatenate((X, X_temp), axis=1)
-        Y = np.concatenate((Y, Y_temp), axis=1)
-        y = np.concatenate((y, y_temp))
-    print("Shape for combined data:")
-    print(X.shape, Y.shape, y.shape)
-    # split into training and validation sets
-    X_train = X[:, :45000]
-    y_train = y[:45000]
-    X_val = X[:, 45000:]
-    y_val = y[45000:]
-    # scale the data
-    scaler = Scaler()
-    X_train = scaler.fit_transform(X_train)
-    X_val = scaler.transform(X_val)
-    X_test = scaler.transform(X_test)
-    n_batch = 100
-    N = X_train.shape[1]
-    n_s = int(2 * np.floor(N / n_batch))
-    # create uniform grid of regularization parameters
-    reg_params = 10**np.linspace(-3, -2, num=10)
-    results = {}
-    for lam in reg_params:
-        # print(f"Training with regularization parameter: {lam}")
-        model = Model(32*32*3, 50, 10)
-        optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.0, reg=lam)
-        optimizer.train_with_cyclical_lr(X_train, y_train, X_val, y_val, lr_min = 1e-5, lr_max = 1e-1, step_size=n_s, n_cycles=3, batch_size=n_batch, print_every=0)
-        val_acc = optimizer.compute_accuracy(X_val, y_val)
-        results[lam] = val_acc
-        print(f"Regularization parameter: {lam}, Validation Accuracy: {val_acc:.4f}")
-    best_reg = max(results, key=results.get)
-    print(f"Best regularization parameter: {best_reg}, Validation Accuracy: {results[best_reg]:.4f}")
 
 def main():
     # Load all data batches
@@ -851,9 +770,4 @@ def main():
     optimizer.plot_cyclical_lr_training_progress()
 
 if __name__ == "__main__":
-    #test_gradient_computation()
-    # excercise_3()
-    # excercise_4()
-    #coarse_search()
-    #fine_search()
     main()
