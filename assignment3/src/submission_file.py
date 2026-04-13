@@ -94,6 +94,24 @@ def excercise2():
     my_softmax = ce_loss.P
     gt_softmax = load_data['P']
     print("Difference in softmax output: ", np.mean(np.abs(my_softmax - gt_softmax)))
+    # check backward pass
+    grad = ce_loss.backward()
+    model.backward(grad)
+    my_grad_F = model.layers[0].grad_F
+    gt_grad_F = load_data['grad_Fs_flat']
+    print("Difference in grad_F: ", np.mean(np.abs(my_grad_F - gt_grad_F)))
+    my_grad_W1 = model.layers[2].grad_W
+    gt_grad_W1 = load_data['grad_W1']
+    print("Difference in grad_W1: ", np.mean(np.abs(my_grad_W1 - gt_grad_W1)))
+    my_grad_b1 = model.layers[2].grad_b
+    gt_grad_b1 = load_data['grad_b1']
+    print("Difference in grad_b1: ", np.mean(np.abs(my_grad_b1 - gt_grad_b1)))
+    my_grad_W2 = model.layers[5].grad_W
+    gt_grad_W2 = load_data['grad_W2']
+    print("Difference in grad_W2: ", np.mean(np.abs(my_grad_W2 - gt_grad_W2)))
+    my_grad_b2 = model.layers[5].grad_b
+    gt_grad_b2 = load_data['grad_b2']
+    print("Difference in grad_b2: ", np.mean(np.abs(my_grad_b2 - gt_grad_b2)))
 
 def main():
     pass

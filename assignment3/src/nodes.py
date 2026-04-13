@@ -148,6 +148,9 @@ class Patchify(Node):
         # TODO: change for He initialization
         self.F = np.zeros((3*f*f, nf)) # filters for patch extraction
         self.b = np.zeros((1, nf, 1)) # bias for each filter (1 for broadcasting)
+        self.grad_F = np.zeros_like(self.F)
+        self.grad_b = np.zeros_like(self.b)
+        self.Mx = None # save input for backward pass
 
     def forward(self, Mx: np.array) -> np.array:
         """
@@ -159,12 +162,26 @@ class Patchify(Node):
         Returns:
             numpy array: Output of the Patchify layer of shape (Np * Nf, N).
         """
+        self.Mx = Mx
         res = np.einsum('ijn, jl -> iln', Mx, self.F, optimize=True)
         # res += self.b
         # return np.fmax(res.reshape((Mx.shape[0]*self.nf, Mx.shape[2]), order='C'), 0)
         return res.reshape((Mx.shape[0]*self.nf, Mx.shape[2]), order='C')
 
+    def backward(self, grad):
+        """
+        Calculates the gradient w.r.t. to the filters and bias.
 
+        Args:
+            grad (numpy array): Upper gradient of shape (Np * Nf, N).
+
+        Returns:
+            None (as this layer is the first layer, there is no gradient to return).
+        """
+        grad_reshaped = grad.reshape((self.Mx.shape[0], self.nf, grad.shape[1]), order='C')
+        self.grad_F += np.einsum('jin, jln -> il', self.Mx, grad_reshaped, optimize=True)
+        self.grad_b += 0 # TODO: calculate bias gradient
+        return None
 
 class CrossEntropyLoss(Node):
     def __init__(self):
