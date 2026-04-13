@@ -6,6 +6,7 @@ from model import Model
 from nodes import LinearLayer
 from optimizer import Optimizer
 from typing import override
+
 class ADAM(Optimizer):
     def __init__(self, model, loss_fn, lr, reg, vertical_flip_prob=0, beta1=0.9, beta2=0.999, epsilon=1e-8):
         super().__init__(model, loss_fn, lr, reg, vertical_flip_prob)
@@ -28,6 +29,7 @@ class ADAM(Optimizer):
             X (numpy array): Input batch of shape (D, N) where N is the batch size and D is the dimensionality.
             Y (numpy array): True labels of shape (K, N) where K is the number of classes and N is the batch size.
         """      
+        self.set_train_mode()
         # forward pass
         loss = self.compute_loss(X, Y)
 

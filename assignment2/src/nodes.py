@@ -95,7 +95,7 @@ class Dropout(Node):
         Initializes the Dropout layer.
 
         Args:
-            p (numpy.float64): The dropout probability.
+            p (numpy.float64): The dropout probability (probability of dropping a unit).
         """
         self.p = p
         self.mask = None
@@ -127,8 +127,8 @@ class Dropout(Node):
             return X
     
     def backward(self, grad) -> np.array:
-        assert self.mask is not None, "The mask has to be saved in cache"
         if self.training:
+            assert self.mask is not None, "The mask has to be saved in cache"
             return grad * self.mask
         else:
             return grad

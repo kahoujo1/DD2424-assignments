@@ -3,6 +3,7 @@ import copy
 import matplotlib.pyplot as plt
 from torch_gradient_computations import ComputeGradsWithTorch
 import pickle
+from typing import override
 class Node:
     def forward(self, *inputs):
         raise NotImplementedError
@@ -130,8 +131,8 @@ class Dropout(Node):
             return X
     
     def backward(self, grad) -> np.array:
-        assert self.mask is not None, "The mask has to be saved in cache"
         if self.training:
+            assert self.mask is not None, "The mask has to be saved in cache"
             return grad * self.mask
         else:
             return grad
@@ -189,7 +190,7 @@ class KBinaryCELoss(Node):
         # average over batch
         eps = 1e-12
         P_clipped = np.clip(self.P, eps, 1 - eps)   
-        loss = -np.sum(Y*np.log(P_clipped) + (1-Y)*np.log(1-P_clipped)) / (logits.shape[1] * logits.shape[0])
+        loss = -np.sum(Y*np.log(P_clipped) + (1-Y)*np.log(1-P_clipped)) / (logits.shape[1])
         return loss
     
     def backward(self) -> np.array:
@@ -199,7 +200,7 @@ class KBinaryCELoss(Node):
         Returns:
             numpy.array: Gradient of the loss with respect to the input logits, of shape (K, N).
         """
-        return (self.P - self.Y) / (self.P.shape[1] * self.P.shape[0])
+        return (self.P - self.Y) / (self.P.shape[1])
 
 class Model:
     def __init__(self, d_in: int, d_hidden: int, K: int, p : float = 0.0):
@@ -736,6 +737,160 @@ class Optimizer:
         self.model.set_train_mode(False)
 
 
+class ADAM(Optimizer):
+    def __init__(self, model, loss_fn, lr, reg, vertical_flip_prob=0, beta1=0.9, beta2=0.999, epsilon=1e-8):
+        super().__init__(model, loss_fn, lr, reg, vertical_flip_prob)
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epsilon = epsilon
+        # momentum and variance terms for each layer, initialized to zero
+        self.m_W = [np.zeros_like(layer.W) for layer in self.model.layers if isinstance(layer, LinearLayer)]
+        self.v_W = [np.zeros_like(layer.W) for layer in self.model.layers if isinstance(layer, LinearLayer)]
+        self.m_b = [np.zeros_like(layer.b) for layer in self.model.layers if isinstance(layer, LinearLayer)]
+        self.v_b = [np.zeros_like(layer.b) for layer in self.model.layers if isinstance(layer, LinearLayer)]
+        self.t = 0
+
+    @override
+    def step(self, X: np.ndarray, Y: np.ndarray):
+        """
+        Applies one optimization step using ADAM optimizer.
+
+        Args:
+            X (numpy array): Input batch of shape (D, N) where N is the batch size and D is the dimensionality.
+            Y (numpy array): True labels of shape (K, N) where K is the number of classes and N is the batch size.
+        """      
+        self.set_train_mode()
+        # forward pass
+        loss = self.compute_loss(X, Y)
+
+        # backward pass
+        grad_loss = self.loss_fn.backward()
+        self.model.backward(grad_loss)
+
+        # add L2 regularization gradient
+        for layer in self.model.layers:
+            if isinstance(layer, LinearLayer):
+                layer.grad_W += 2 * self.reg * layer.W
+
+        # update momentum and variance terms
+        self.t += 1 
+        i = 0
+        for layer in self.model.layers:
+            if isinstance(layer, LinearLayer):
+                self.m_W[i] = self.beta1 * self.m_W[i] + (1 - self.beta1) * layer.grad_W
+                self.v_W[i] = self.beta2 * self.v_W[i] + (1 - self.beta2) * (layer.grad_W ** 2)
+                self.m_b[i] = self.beta1 * self.m_b[i] + (1 - self.beta1) * layer.grad_b
+                self.v_b[i] = self.beta2 * self.v_b[i] + (1 - self.beta2) * (layer.grad_b ** 2)
+                # counter zero bias
+                m_W_hat = self.m_W[i] / (1 - self.beta1 ** self.t)
+                v_W_hat = self.v_W[i] / (1 - self.beta2 ** self.t)
+                m_b_hat = self.m_b[i] / (1 - self.beta1 ** self.t)
+                v_b_hat = self.v_b[i] / (1 - self.beta2 ** self.t)
+                # update parameters manually since we need to use the corrected momentum and variance terms
+                layer.W -= self.lr * m_W_hat / (np.sqrt(v_W_hat) + self.epsilon)
+                layer.b -= self.lr * m_b_hat / (np.sqrt(v_b_hat) + self.epsilon)
+                layer.grad_W = 0
+                layer.grad_b = 0
+                layer.X = None
+                i += 1
+
+
+def dropout_test():
+    # Load all data batches
+    X_test, Y_test, y_test = load_batch("test_batch")
+    X, Y, y = load_batch("data_batch_1")
+    for i in range(2,6):
+        X_temp, Y_temp, y_temp = load_batch(f"data_batch_{i}")
+        X = np.concatenate((X, X_temp), axis=1)
+        Y = np.concatenate((Y, Y_temp), axis=1)
+        y = np.concatenate((y, y_temp))
+    # split into training and validation sets
+    X_train = X[:, :45000]
+    y_train = y[:45000]
+    X_val = X[:, 45000:]
+    y_val = y[45000:]
+    # scale data
+    scaler = Scaler()
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test = scaler.transform(X_test)
+
+    model = Model(32*32*3, 400, 10, p =0.2)
+    optimizer = Optimizer(model, CrossEntropyLoss(), lr=1e-3, reg=0.0, vertical_flip_prob=0.5, do_batch_translation=False)
+    n_batch = 100
+    N = X_train.shape[1]
+    n_s = int(2 * np.floor(N / n_batch))
+
+    optimizer.train_with_cyclical_lr(X_train, y_train, X_val, y_val, lr_min = 1e-5, lr_max = 1e-1, step_size=n_s, n_cycles=3, batch_size=n_batch, print_every=500)
+    val_acc = optimizer.compute_accuracy(X_val, y_val)
+    test_acc = optimizer.compute_accuracy(X_test, y_test)
+    print("validation accuracy: ", val_acc)
+    print("test accuracy: ", test_acc)
+    optimizer.plot_cyclical_lr_training_progress()
+
+def k_binary_test():
+    # Load all data batches
+    X_test, Y_test, y_test = load_batch("test_batch")
+    X, Y, y = load_batch("data_batch_1")
+    for i in range(2,6):
+        X_temp, Y_temp, y_temp = load_batch(f"data_batch_{i}")
+        X = np.concatenate((X, X_temp), axis=1)
+        Y = np.concatenate((Y, Y_temp), axis=1)
+        y = np.concatenate((y, y_temp))
+    # split into training and validation sets
+    X_train = X[:, :45000]
+    y_train = y[:45000]
+    X_val = X[:, 45000:]
+    y_val = y[45000:]
+    # scale data
+    scaler = Scaler()
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test = scaler.transform(X_test)
+
+    model = Model(32*32*3, 400, 10)
+    optimizer = Optimizer(model, KBinaryCELoss(), lr=1e-3, reg=0.0, vertical_flip_prob=0.5, do_batch_translation=False)
+    n_batch = 100
+    N = X_train.shape[1]
+    n_s = int(2 * np.floor(N / n_batch))
+
+    optimizer.train_with_cyclical_lr(X_train, y_train, X_val, y_val, lr_min = 1e-5, lr_max = 1e-1, step_size=n_s, n_cycles=3, batch_size=n_batch, print_every=500)
+    val_acc = optimizer.compute_accuracy(X_val, y_val)
+    test_acc = optimizer.compute_accuracy(X_test, y_test)
+    print("validation accuracy: ", val_acc)
+    print("test accuracy: ", test_acc)
+    optimizer.plot_cyclical_lr_training_progress()
+
+def adam_test():
+# Load all data batches
+    X_test, Y_test, y_test = load_batch("test_batch")
+    X, Y, y = load_batch("data_batch_1")
+    for i in range(2,6):
+        X_temp, Y_temp, y_temp = load_batch(f"data_batch_{i}")
+        X = np.concatenate((X, X_temp), axis=1)
+        Y = np.concatenate((Y, Y_temp), axis=1)
+        y = np.concatenate((y, y_temp))
+    # split into training and validation sets
+    X_train = X[:, :45000]
+    y_train = y[:45000]
+    X_val = X[:, 45000:]
+    y_val = y[45000:]
+    # scale data
+    scaler = Scaler()
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test = scaler.transform(X_test)
+
+    model = Model(32*32*3, 400, 10)
+    optimizer = ADAM(model, CrossEntropyLoss(), lr=1e-3, reg=0.0001, vertical_flip_prob=0.5)
+    optimizer.train(X_train, y_train, X_val, y_val, num_epochs=30, batch_size=100, print_every=5)
+    val_acc = optimizer.compute_accuracy(X_val, y_val)
+    test_acc = optimizer.compute_accuracy(X_test, y_test)
+    print("validation accuracy: ", val_acc)
+    print("test accuracy: ", test_acc)
+    optimizer.plot_training_progress()
+
+
 def main():
     # Load all data batches
     X_test, Y_test, y_test = load_batch("test_batch")
@@ -770,4 +925,7 @@ def main():
     optimizer.plot_cyclical_lr_training_progress()
 
 if __name__ == "__main__":
-    main()
+    # dropout_test()
+    # k_binary_test()
+    adam_test()
+    # main()

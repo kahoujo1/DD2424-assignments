@@ -154,12 +154,16 @@ class Optimizer:
                 self.step(X_batch, Y_batch)
             # compute training and validation loss and accuracy for tracking
             self.set_eval_mode()
-            self.train_cost_history.append(self.compute_loss(X_train, Y_train))
-            self.val_cost_history.append(self.compute_loss(X_val, Y_val))
-            self.train_loss_history.append(self.compute_loss(X_train, Y_train) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
-            self.val_loss_history.append(self.compute_loss(X_val, Y_val) - self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer)))
-            self.train_acc_history.append(self.compute_accuracy(X_train, y_train))
-            self.val_acc_history.append(self.compute_accuracy(X_val, y_val))
+            if ((epoch + 1) % 5 == 0 or epoch == 0):
+                train_loss = self.compute_loss(X_train, Y_train)
+                acc_loss = self.compute_loss(X_val, Y_val)
+                reg_cost = self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer))
+                self.train_cost_history.append(train_loss)
+                self.val_cost_history.append(acc_loss)
+                self.train_loss_history.append(train_loss - reg_cost)
+                self.val_loss_history.append(acc_loss - reg_cost)
+                self.train_acc_history.append(self.compute_accuracy(X_train, y_train))
+                self.val_acc_history.append(self.compute_accuracy(X_val, y_val))
             # print training progress
             if print_every > 0 and (epoch + 1) % print_every == 0:
                 print(f'Epoch {epoch+1}/{num_epochs} - Train Loss: {self.train_loss_history[-1]:.4f}, Val Loss: {self.val_loss_history[-1]:.4f}, Train Acc: {self.train_acc_history[-1]:.4f}, Val Acc: {self.val_acc_history[-1]:.4f}')
