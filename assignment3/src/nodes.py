@@ -131,6 +131,22 @@ class Dropout(Node):
         else:
             return grad
 
+class Patchify(Node):
+    """
+    The Patchify layer extracts non-overlapping patches from the input image using convolution filters.
+    """
+    def __init__(self, f: int, nf: int):
+        """
+        Initializes the Patchify layer.
+        
+        Args:
+            f (int): The size of the filter (patch) to be extracted from the input image.
+            nf (int): The number of filters.
+        """
+        self.f = f
+        self.nf = nf
+
+
 class CrossEntropyLoss(Node):
     def __init__(self):
         self.P = None # save softmax probabilities for backward pass
