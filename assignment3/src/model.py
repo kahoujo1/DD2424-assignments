@@ -3,11 +3,13 @@ Implementation of a 2-layer FNN model for CIFAR-10 classification.
 """
 import numpy as np
 
-from nodes import Dropout, LinearLayer, ReLU
+from nodes import Dropout, LinearLayer, ReLU, Patchify
 
 class Model:
-    def __init__(self, d_in: int, d_hidden: int, K: int, p : float = 0.0):
-        self.layers = [LinearLayer(d_in, d_hidden),
+    def __init__(self, f: int, nf: int, d_hidden: int, K: int, p : float = 0.0):
+        self.layers = [Patchify(f, nf),
+                       ReLU(),
+                       LinearLayer((32//f)**2 * nf, d_hidden),
                        ReLU(),
                        Dropout(p=p),
                        LinearLayer(d_hidden, K)]

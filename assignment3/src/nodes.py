@@ -72,7 +72,7 @@ class ReLU(Node):
             numpy array: Output of the ReLU activation function.
         """
         self.X = X
-        return np.maximum(0, X)
+        return np.fmax(0, X)
     
     def backward(self, grad):
         """
@@ -145,6 +145,25 @@ class Patchify(Node):
         """
         self.f = f
         self.nf = nf
+        # TODO: change for He initialization
+        self.F = np.zeros((3*f*f, nf)) # filters for patch extraction
+        self.b = np.zeros((1, nf, 1)) # bias for each filter (1 for broadcasting)
+
+    def forward(self, Mx: np.array) -> np.array:
+        """
+        Calculates the forward pass for the Patchify layer.
+        
+        Args:
+            Mx (numpy array): Input matix Mx of shape (Np, f*f*3, N), where Np is the number of patches, f is the filter size, and N is the batch size.
+        
+        Returns:
+            numpy array: Output of the Patchify layer of shape (Np * Nf, N).
+        """
+        res = np.einsum('ijn, jl -> iln', Mx, self.F, optimize=True)
+        # res += self.b
+        # return np.fmax(res.reshape((Mx.shape[0]*self.nf, Mx.shape[2]), order='C'), 0)
+        return res.reshape((Mx.shape[0]*self.nf, Mx.shape[2]), order='C')
+
 
 
 class CrossEntropyLoss(Node):
