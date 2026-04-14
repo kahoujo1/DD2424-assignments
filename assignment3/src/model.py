@@ -7,6 +7,7 @@ from nodes import Dropout, LinearLayer, ReLU, Patchify
 
 class Model:
     def __init__(self, f: int, nf: int, d_hidden: int, K: int, p : float = 0.0):
+        np.random.seed(42) # for reproducibility
         self.layers = [Patchify(f, nf),
                        ReLU(),
                        LinearLayer((32//f)**2 * nf, d_hidden),

@@ -48,16 +48,16 @@ def precompute_Mx(X: np.ndarray, f: int) -> np.ndarray:
     Precomputes the matrix Mx for the initial Patchify layer.
     
     Args:
-        X (numpy array): Input image data of shape (32*32*3, N).
+        X (numpy array): Input image data of shape (32x32x3, N).
         f (int): The size of the filter (patch) to be extracted from the input image.
     
     Returns:
-        numpy array: The precomputed Mx matrix of shape (Np, f*f*3, N), where Np is the number of patches and N is the batch size.
+        numpy array: The precomputed Mx matrix of shape (Np, 3f^2, N), where Np is the number of patches and N is the batch size.
     """
     N = X.shape[1]
     X_ims = np.transpose(X.reshape((32, 32, 3, N), order='F'), (1, 0, 2, 3))
     Np = (32//f)**2
-    Mx = np.zeros((Np, f*f*3, N), dtype=np.float32)
+    Mx = np.zeros((Np, f*f*3, N))
     for n in range(N):
         region = 0
         for i in range(32//f):

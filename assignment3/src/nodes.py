@@ -9,7 +9,6 @@ class Node:
 
 class LinearLayer(Node):
     def __init__(self, d_in, d_out):
-        np.random.seed(42) # for reproducibility
         self.W = np.random.randn(d_out, d_in) * np.sqrt(2/d_in) # He initialization
         self.b = np.zeros((d_out, 1))
         self.X = None # save input for backward pass
@@ -146,7 +145,7 @@ class Patchify(Node):
         self.f = f
         self.nf = nf
         self.F = np.random.randn(f*f*3, nf) * np.sqrt(2/(f*f*3)) # He initialization for convolution filters, shape (f*f*3, nf)
-        self.b = np.zeros((1, nf, 1)) # bias for each filter (1 for broadcasting)
+        self.b = np.zeros((1, self.nf, 1)) # bias for each filter (1 for broadcasting)
         self.grad_F = np.zeros_like(self.F)
         self.grad_b = np.zeros_like(self.b)
         self.Mx = None # save input for backward pass
@@ -162,7 +161,7 @@ class Patchify(Node):
             numpy array: Output of the Patchify layer of shape (Np * Nf, N).
         """
         self.Mx = Mx
-        res = np.einsum('ijn, jl -> iln', Mx, self.F, optimize=True)
+        res = np.einsum('ijn, jl -> iln', Mx, self.F, optimize=True) + self.b
         # res += self.b
         # return np.fmax(res.reshape((Mx.shape[0]*self.nf, Mx.shape[2]), order='C'), 0)
         return res.reshape((Mx.shape[0]*self.nf, Mx.shape[2]), order='C')
@@ -179,7 +178,7 @@ class Patchify(Node):
         """
         grad_reshaped = grad.reshape((self.Mx.shape[0], self.nf, grad.shape[1]), order='C')
         self.grad_F += np.einsum('jin, jln -> il', self.Mx, grad_reshaped, optimize=True)
-        self.grad_b += 0 # TODO: calculate bias gradient
+        self.grad_b += np.sum(grad_reshaped, axis=(0, 2), keepdims=True)
         return None
 
 class CrossEntropyLoss(Node):
