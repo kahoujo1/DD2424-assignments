@@ -113,10 +113,17 @@ def excercise2():
     gt_grad_b2 = load_data['grad_b2']
     print("Difference in grad_b2: ", np.mean(np.abs(my_grad_b2 - gt_grad_b2)))
 
+def excercise2_precompute_Mx():
+    X, _, _ = load_batch('data_batch_1')
+    f = 4
+    Mx = precompute_Mx(X, f)
+    print("Mx shape: ", Mx.shape)
+
 def main():
     pass
 
 if __name__ == "__main__":
     # main()
     # excercise1()
-    excercise2()
+    # excercise2()
+    excercise2_precompute_Mx()

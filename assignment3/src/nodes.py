@@ -145,8 +145,7 @@ class Patchify(Node):
         """
         self.f = f
         self.nf = nf
-        # TODO: change for He initialization
-        self.F = np.zeros((3*f*f, nf)) # filters for patch extraction
+        self.F = np.random.randn(f*f*3, nf) * np.sqrt(2/(f*f*3)) # He initialization for convolution filters, shape (f*f*3, nf)
         self.b = np.zeros((1, nf, 1)) # bias for each filter (1 for broadcasting)
         self.grad_F = np.zeros_like(self.F)
         self.grad_b = np.zeros_like(self.b)

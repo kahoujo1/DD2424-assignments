@@ -42,3 +42,27 @@ def calculate_mean_grad_difference(grad1: np.ndarray, grad2: np.ndarray) -> np.f
     """
     denum = max(1e-8, np.mean(np.abs(grad1) + np.abs(grad2)))
     return np.mean(np.abs(grad1 - grad2) / denum)
+
+def precompute_Mx(X: np.ndarray, f: int) -> np.ndarray:
+    """
+    Precomputes the matrix Mx for the initial Patchify layer.
+    
+    Args:
+        X (numpy array): Input image data of shape (32*32*3, N).
+        f (int): The size of the filter (patch) to be extracted from the input image.
+    
+    Returns:
+        numpy array: The precomputed Mx matrix of shape (Np, f*f*3, N), where Np is the number of patches and N is the batch size.
+    """
+    N = X.shape[1]
+    X_ims = np.transpose(X.reshape((32, 32, 3, N), order='F'), (1, 0, 2, 3))
+    Np = (32//f)**2
+    Mx = np.zeros((Np, f*f*3, N), dtype=np.float32)
+    for n in range(N):
+        region = 0
+        for i in range(32//f):
+            for j in range(32//f):
+                patch = X_ims[i*f:(i+1)*f, j*f:(j+1)*f, :, n]
+                Mx[region, :, n] = patch.reshape((1, f*f*3), order='C')
+                region += 1
+    return Mx
