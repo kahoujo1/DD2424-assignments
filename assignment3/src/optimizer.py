@@ -72,6 +72,8 @@ class Optimizer:
         for layer in self.model.layers:
             if isinstance(layer, LinearLayer):
                 loss += self.reg * np.sum(layer.W ** 2)
+            if isinstance(layer, Patchify):
+                loss += self.reg * np.sum(layer.F ** 2)
         return loss
     
     def compute_accuracy(self, Mx: np.ndarray, y: np.ndarray) -> np.float64:
@@ -172,49 +174,10 @@ class Optimizer:
                 self.val_loss_history.append(acc_loss - reg_cost)
                 self.train_acc_history.append(self.compute_accuracy(Mx_train, y_train))
                 self.val_acc_history.append(self.compute_accuracy(Mx_val, y_val))
+                self.plot_update_value.append(step + 1)
             # print training progress
             if print_every > 0 and (step + 1) % print_every == 0:
                 print(f'Update step {step + 1} - Train Loss: {self.train_loss_history[-1]:.4f}, Val Loss: {self.val_loss_history[-1]:.4f}, Train Acc: {self.train_acc_history[-1]:.4f}, Val Acc: {self.val_acc_history[-1]:.4f}, LR: {self.lr:.6f}')
-
-                
-
-    def plot_training_progress(self) -> None:
-        """
-        Plots the training and validation loss and accuracy curves.
-        """
-        epochs = np.arange(1, len(self.train_loss_history) + 1)
-        plt.figure(figsize=(6, 5))
-        plt.plot(epochs, self.train_loss_history, label='Train Loss')
-        plt.plot(epochs, self.val_loss_history, label='Val Loss')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.title('Training and Validation Loss')
-        plt.legend()
-        plt.grid()
-        plt.tight_layout()
-        plt.show()
-        
-        plt.figure(figsize=(6, 5))
-        plt.plot(epochs, self.train_cost_history, label='Train Cost (including regularization)')
-        plt.plot(epochs, self.val_cost_history, label='Val Cost (including regularization)')
-        plt.xlabel('Epoch')
-        plt.ylabel('Cost')
-        plt.title('Training and Validation Cost')
-        plt.grid()
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
-
-        plt.figure(figsize=(6, 5))
-        plt.plot(epochs, self.train_acc_history, label='Train Accuracy')
-        plt.plot(epochs, self.val_acc_history, label='Val Accuracy')
-        plt.xlabel('Epoch')
-        plt.ylabel('Accuracy')
-        plt.title('Training and Validation Accuracy')
-        plt.grid()
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
 
     def plot_cyclical_lr_training_progress(self) -> None:
         """
@@ -289,66 +252,6 @@ class Optimizer:
         X_flipped = X_flipped.reshape((32*32*3, N), order='F')
         
         return X_flipped
-    
-    def translate_batch(self, X: np.ndarray) -> np.ndarray:
-        """
-        Translates the input images by a random amount in the range [-3, 3] pixels in both x and y directions.
-
-        Args:
-            X (numpy array): Input batch of shape (D, N), where N is the number of samples and D is the dimensionality.
-
-        Returns:
-            numpy array: Translated images of shape (D, N).
-        """
-        N = X.shape[1]
-        X_reshaped = X.reshape((32, 32, 3, N), order='F')
-        X_translated = np.zeros_like(X_reshaped)
-        for i in range(N):
-            tx = np.random.randint(-3, 4)
-            ty = np.random.randint(-3, 4)
-            X_translated[:, :, :, i] = np.roll(X_reshaped[:, :, :, i], shift=(tx, ty), axis=(0, 1))
-            # mask out the rolled in pixels with zeros
-            if tx > 0:
-                X_translated[:tx, :, :, i] = 0
-            elif tx < 0:
-                X_translated[tx:, :, :, i] = 0
-            if ty > 0:
-                X_translated[:, :ty, :, i] = 0  
-            elif ty < 0:
-                X_translated[:, ty:, :, i] = 0
-        X_translated = X_translated.reshape((32*32*3, N), order='F')
-        return X_translated
-    
-    def grid_search(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, lr_values: np.ndarray, reg_values: np.ndarray, batch_values:np.ndarray) -> None:
-        """
-        Performs a grid search over the specified parameters, to find the best combination.
-        
-        Args:
-            X_train (numpy array): Training input data.
-            y_train (numpy array): Training labels.
-            X_val (numpy array): Validation input data.
-            y_val (numpy array): Validation labels.
-            lr_values (numpy array): Array of learning rate values to search over.
-            reg_values (numpy array): Array of regularization parameter values to search over.
-            batch_values (numpy array): Array of batch size values to search over.
-        """
-        best_val_acc = 0.0
-        best_params = None
-        for lr in lr_values:
-            for reg in reg_values:
-                for batch_size in batch_values:
-                    print(f'Testing lr={lr}, reg={reg}, batch_size={batch_size}')
-                    model = copy.deepcopy(self.model)  # create a fresh model for each run
-                    optimizer = Optimizer(model, self.loss_fn, lr=lr, reg=reg, vertical_flip_prob=self.vertical_flip_prob)
-                    optimizer.train(X_train, y_train, X_val, y_val, num_epochs=150, batch_size=batch_size, print_every=0)
-                    val_acc = np.max(optimizer.val_acc_history)
-                    epoch = np.argmax(optimizer.val_acc_history)
-                    print(f'Max validation accuracy {val_acc:.4f} at epoch {epoch}')
-                    if val_acc > best_val_acc:
-                        best_val_acc = val_acc
-                        best_params = (epoch, lr, reg, batch_size)
-        print(f"Final best validation accuracy: {best_val_acc}")
-        print(f"Best parameters: epoch={best_params[0]}, lr={best_params[1]}, reg={best_params[2]}, batch_size={best_params[3]}")
     
     def set_train_mode(self):
         """
