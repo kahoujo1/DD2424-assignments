@@ -215,6 +215,11 @@ def excercise3():
     Mx_val = precompute_Mx(X_val, f)
     # train the model
     optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=100)
+    X_test, Y_test, y_test = load_batch('test_batch')
+    Mx_test = precompute_Mx(X_test, f)
+    test_acc = optimizer.compute_accuracy(Mx_test, y_test)
+    print(f"Test accuracy: {test_acc:.4f}")
+    optimizer.plot_cyclical_lr_training_progress()
 def main():
     pass
 

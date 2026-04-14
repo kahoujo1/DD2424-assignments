@@ -49,6 +49,8 @@ class Model:
         for layer in self.layers:
             if isinstance(layer, LinearLayer):
                 layer.update_params(lr)
+            if isinstance(layer, Patchify):
+                layer.update_params(lr)
 
     def set_train_mode(self, mode: bool) -> None:
         """

@@ -181,6 +181,20 @@ class Patchify(Node):
         self.grad_b += np.sum(grad_reshaped, axis=(0, 2), keepdims=True)
         return None
 
+    def update_params(self, lr: np.float64):
+        """
+        Updates the layer parameters and resets gradient.
+
+        Args:
+            lr (np.float64): The learning rate.
+        """
+        self.F -= lr * self.grad_F
+        self.b -= lr * self.grad_b
+        self.grad_F = np.zeros_like(self.F)
+        self.grad_b = np.zeros_like(self.b)
+        self.Mx = None # clear cache
+    
+
 class CrossEntropyLoss(Node):
     def __init__(self):
         self.P = None # save softmax probabilities for backward pass
