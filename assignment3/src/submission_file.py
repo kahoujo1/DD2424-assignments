@@ -199,7 +199,22 @@ def test_grads_with_torch():
     my_grad_b = model.layers[0].grad_b
     print("Difference in grad_b: ", calculate_mean_grad_difference(torch_grad_b, my_grad_b))
 
-
+def excercise3():
+    f = 4
+    nf = 10
+    nh = 50
+    lam = 0.003
+    model = Model(f, nf, nh, 10)
+    optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.001, reg=lam)
+    X, Y, y = load_training_batches()
+    # split into training and validation set
+    X_train, Y_train, y_train = X[:, :49000], Y[:, :49000], y[:49000]
+    X_val, Y_val, y_val = X[:, 49000:], Y[:,49000:], y[49000:]
+    # transform X into Mx for the initial Patchify layer
+    Mx_train = precompute_Mx(X_train, f)
+    Mx_val = precompute_Mx(X_val, f)
+    # train the model
+    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=100)
 def main():
     pass
 
@@ -208,4 +223,5 @@ if __name__ == "__main__":
     # excercise1()
     # excercise2()
     # excercise2_precompute_Mx()
-    test_grads_with_torch()
+    # test_grads_with_torch()
+    excercise3()

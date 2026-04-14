@@ -31,6 +31,24 @@ def load_batch(batchname: str):
     Y[y, np.arange(nn)] = 1
     return X, Y, y
 
+def load_training_batches():
+    """
+    Loads all the training batches and concatenates them.
+
+    Returns:
+        Array of [X, Y, y] where
+        - X contains the flattened image pixel data of shape (32x32x3, N)
+        - Y is the true probability class distribution of shape (K, N) (one hot encoding)'
+        - y is a vector of true labels (N,)
+    """
+    X, Y, y = load_batch("data_batch_1")
+    for i in range(2,6):
+        X_temp, Y_temp, y_temp = load_batch(f"data_batch_{i}")
+        X = np.concatenate((X, X_temp), axis=1)
+        Y = np.concatenate((Y, Y_temp), axis=1)
+        y = np.concatenate((y, y_temp))
+    return X, Y, y
+
 def calculate_mean_grad_difference(grad1: np.ndarray, grad2: np.ndarray) -> np.float64:
     """
     Calculates the mean relative error between two gradients.
@@ -57,7 +75,7 @@ def precompute_Mx(X: np.ndarray, f: int) -> np.ndarray:
     N = X.shape[1]
     X_ims = np.transpose(X.reshape((32, 32, 3, N), order='F'), (1, 0, 2, 3))
     Np = (32//f)**2
-    Mx = np.zeros((Np, f*f*3, N))
+    Mx = np.zeros((Np, f*f*3, N), dtype=np.float32)
     for n in range(N):
         region = 0
         for i in range(32//f):
