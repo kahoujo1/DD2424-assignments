@@ -9,7 +9,7 @@ from model import Model
 from nodes import CrossEntropyLoss, LinearLayer, KBinaryCELoss, Patchify
 
 class Optimizer:
-    def __init__(self, model: Model, loss_fn: CrossEntropyLoss | KBinaryCELoss, lr: np.float64, reg: np.float64, vertical_flip_prob: float = 0, do_batch_translation: bool = False):
+    def __init__(self, model: Model, loss_fn: CrossEntropyLoss | KBinaryCELoss, lr: np.float64, reg: np.float64, label_smoothing: float = 0.0):
         """
         Initializes the optimizer.
 
@@ -18,15 +18,13 @@ class Optimizer:
             loss_fn (CrossEntropyLoss | KBinaryCELoss): The loss function to optimize.
             lr (np.float64): The learning rate.
             reg (np.float64): The regularization parameter (lambda).
-            vertical_flip_prob (float, optional): The probability of applying vertical flipping as a data augmentation technique. Defaults to 0 (no flipping).
-            do_batch_translation (bool, optional): Whether to apply random translation to the batch as a data augmentation technique. Defaults to False (no translation).
+            label_smoothing (float): The probability of label smoothing to distribute over the non-true classes (only applicable for CrossEntropyLoss). Defaults to 0.0 (no label smoothing).
         """
         self.model = model
         self.loss_fn = loss_fn
         self.lr = lr
         self.reg = reg
-        self.vertical_flip_prob = vertical_flip_prob
-        self.do_batch_translation = do_batch_translation
+        self.label_smoothing = label_smoothing
         # variables for tracking training progress
         self.train_cost_history = []
         self.val_cost_history = []
@@ -139,7 +137,10 @@ class Optimizer:
         N_val = y_val.shape[0]
         K = 10
         Y_train = np.zeros((K, N_train))
-        Y_train[y_train, np.arange(N_train)] = 1
+        if self.label_smoothing > 0:
+            assert isinstance(self.loss_fn, CrossEntropyLoss), "Label smoothing is only applicable for CrossEntropyLoss."
+            Y_train += self.label_smoothing / (K - 1)
+        Y_train[y_train, np.arange(N_train)] = 1 - self.label_smoothing
         Y_val = np.zeros((K, N_val))
         Y_val[y_val, np.arange(N_val)] = 1
         N_batches = N_train // batch_size # number of batches per epoch
@@ -183,7 +184,7 @@ class Optimizer:
                 steps_taken += 1
             # increase step size for next cycle
             step_size *= 2
-            
+
     def plot_cyclical_lr_training_progress(self) -> None:
         """
         Plots the training and validation loss and accuracy curves for cyclical learning rate training.

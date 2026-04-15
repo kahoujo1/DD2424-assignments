@@ -388,6 +388,9 @@ def excercise3_train_for_longer():
     print(f"Architecture 2 (longer training) - Test accuracy: {test_acc:.4f}, Validation accuracy: {val_acc:.4f}")
     optimizer.plot_cyclical_lr_training_progress()
 
+def excercise4():
+    pass
+
 def main():
     pass
 
