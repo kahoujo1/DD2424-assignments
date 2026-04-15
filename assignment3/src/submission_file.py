@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import torch
+import time
 
 from nodes import *
 from model import Model
@@ -237,6 +238,10 @@ def excercise3_architectures():
     X_val = scaler.transform(X_val)
     X_test, Y_test, y_test = load_batch('test_batch')
     X_test = scaler.transform(X_test)
+    # for plotting
+    test_accuracies = []
+    val_accuracies = []
+    runtime = []
     # architecture 1
     f = 2
     nf = 3
@@ -246,9 +251,15 @@ def excercise3_architectures():
     Mx_train = precompute_Mx(X_train, f)
     Mx_val = precompute_Mx(X_val, f)
     Mx_test = precompute_Mx(X_test, f)
-    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=100)
+    time.sleep(1) # sleep for a second to avoid any issues with time measurement
+    start_time = time.time()
+    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=0)
+    end_time = time.time()
+    runtime.append(end_time - start_time)
     test_acc = optimizer.compute_accuracy(Mx_test, y_test)
     val_acc = optimizer.compute_accuracy(Mx_val, y_val)
+    test_accuracies.append(test_acc)
+    val_accuracies.append(val_acc)
     print(f"Architecture 1 - Test accuracy: {test_acc:.4f}, Validation accuracy: {val_acc:.4f}")
     # architecture 2
     f = 4
@@ -259,9 +270,14 @@ def excercise3_architectures():
     Mx_train = precompute_Mx(X_train, f)
     Mx_val = precompute_Mx(X_val, f)
     Mx_test = precompute_Mx(X_test, f)
-    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=100)
+    start_time = time.time()
+    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=0)
+    end_time = time.time()
+    runtime.append(end_time - start_time)
     test_acc = optimizer.compute_accuracy(Mx_test, y_test)
     val_acc = optimizer.compute_accuracy(Mx_val, y_val)
+    test_accuracies.append(test_acc)
+    val_accuracies.append(val_acc)
     print(f"Architecture 2 - Test accuracy: {test_acc:.4f}, Validation accuracy: {val_acc:.4f}")
     # architecture 3
     f = 8
@@ -272,9 +288,14 @@ def excercise3_architectures():
     Mx_train = precompute_Mx(X_train, f)
     Mx_val = precompute_Mx(X_val, f)
     Mx_test = precompute_Mx(X_test, f)
-    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=100)
+    start_time = time.time()
+    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=0)
+    end_time = time.time()
+    runtime.append(end_time - start_time)
     test_acc = optimizer.compute_accuracy(Mx_test, y_test)
     val_acc = optimizer.compute_accuracy(Mx_val, y_val)
+    test_accuracies.append(test_acc)
+    val_accuracies.append(val_acc)
     print(f"Architecture 3 - Test accuracy: {test_acc:.4f}, Validation accuracy: {val_acc:.4f}")
     # architecture 4
     f = 16
@@ -285,11 +306,87 @@ def excercise3_architectures():
     Mx_train = precompute_Mx(X_train, f)
     Mx_val = precompute_Mx(X_val, f)
     Mx_test = precompute_Mx(X_test, f)
-    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=100)
+    start_time = time.time()
+    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=0)
+    end_time = time.time()
+    runtime.append(end_time - start_time)
     test_acc = optimizer.compute_accuracy(Mx_test, y_test)
     val_acc = optimizer.compute_accuracy(Mx_val, y_val)
+    test_accuracies.append(test_acc)
+    val_accuracies.append(val_acc)
     print(f"Architecture 4 - Test accuracy: {test_acc:.4f}, Validation accuracy: {val_acc:.4f}")
+    # create a bar chart of the accuracies
+    architectures = ['f=2, nf=3', 'f=4, nf=10', 'f=8, nf=40', 'f=16, nf=160']
+    x = np.arange(len(architectures))
+    width = 0.35
+    fig, ax = plt.subplots()
+    rects1 = ax.bar(x - width/2, val_accuracies, width, label='Validation Accuracy')
+    rects2 = ax.bar(x + width/2, test_accuracies, width, label='Test Accuracy')
+    ax.set_ylabel('Accuracy')
+    ax.set_title('Accuracy by architecture')
+    ax.set_xticks(x)
+    ax.set_xticklabels(architectures)
+    ax.legend()
+    plt.ylim(0, 1)
+    plt.show()
+    # create a bar chart of the runtimes
+    fig, ax = plt.subplots()
+    rects = ax.bar(architectures, runtime)
+    ax.set_ylabel('Runtime (seconds)')
+    ax.set_title('Runtime by architecture')
+    plt.show()
 
+def excercise3_train_for_longer():
+    scaler = Scaler()
+    X, Y, y = load_training_batches()
+    X_train, Y_train, y_train = X[:, :49000], Y[:, :49000], y[:49000]
+    X_val, Y_val, y_val = X[:, 49000:], Y[:,49000:], y[49000:]
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test, Y_test, y_test = load_batch('test_batch')
+    X_test = scaler.transform(X_test)
+    # architecture 2
+    f = 4
+    nf = 10
+    nh = 50
+    model = Model(f, nf, nh, 10)
+    optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.001, reg=0.003)
+    Mx_train = precompute_Mx(X_train, f)
+    Mx_val = precompute_Mx(X_val, f)
+    Mx_test = precompute_Mx(X_test, f)
+    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=0)
+    test_acc = optimizer.compute_accuracy(Mx_test, y_test)
+    val_acc = optimizer.compute_accuracy(Mx_val, y_val)
+    print(f"Architecture 2 (longer training) - Test accuracy: {test_acc:.4f}, Validation accuracy: {val_acc:.4f}")
+    optimizer.plot_cyclical_lr_training_progress()
+    # architecture 3
+    f = 8
+    nf = 40
+    nh = 50
+    model = Model(f, nf, nh, 10)
+    optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.001, reg=0.003)
+    Mx_train = precompute_Mx(X_train, f)
+    Mx_val = precompute_Mx(X_val, f)
+    Mx_test = precompute_Mx(X_test, f)
+    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=0)
+    test_acc = optimizer.compute_accuracy(Mx_test, y_test)
+    val_acc = optimizer.compute_accuracy(Mx_val, y_val)
+    print(f"Architecture 3 (longer training) - Test accuracy: {test_acc:.4f}, Validation accuracy: {val_acc:.4f}")
+    optimizer.plot_cyclical_lr_training_progress()
+    # architecture 2 with nf = 40
+    f = 4
+    nf = 40
+    nh = 50
+    model = Model(f, nf, nh, 10)
+    optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.001, reg=0.003)
+    Mx_train = precompute_Mx(X_train, f)
+    Mx_val = precompute_Mx(X_val, f)
+    Mx_test = precompute_Mx(X_test, f)
+    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=3, batch_size=100, print_every=0)
+    test_acc = optimizer.compute_accuracy(Mx_test, y_test)
+    val_acc = optimizer.compute_accuracy(Mx_val, y_val)
+    print(f"Architecture 2 (longer training) - Test accuracy: {test_acc:.4f}, Validation accuracy: {val_acc:.4f}")
+    optimizer.plot_cyclical_lr_training_progress()
 
 def main():
     pass
@@ -301,4 +398,5 @@ if __name__ == "__main__":
     # excercise2_precompute_Mx()
     # test_grads_with_torch()
     # excercise3()
-    excercise3_architectures()
+    # excercise3_architectures()
+    excercise3_train_for_longer()

@@ -143,42 +143,47 @@ class Optimizer:
         Y_val = np.zeros((K, N_val))
         Y_val[y_val, np.arange(N_val)] = 1
         N_batches = N_train // batch_size # number of batches per epoch
-        for step in range(n_cycles * 2 * step_size):
-            # compute learning rate
-            cycle_progress = (step % (2 * step_size)) / (2 * step_size)
-            if cycle_progress < 0.5:
-                lr = lr_min + 2 * cycle_progress * (lr_max - lr_min)
-            else:
-                lr = lr_max - 2 * (cycle_progress - 0.5) * (lr_max - lr_min)
-            self.lr = lr
-            self.lr_history.append(lr)
-            # split to batches after end of epoch
-            idx = step % N_batches
-            if idx == 0:
-                perm = np.random.permutation(N_train)
-                Mx_train_shuffled = Mx_train[:, :, perm]
-                Y_train_shuffled = Y_train[:, perm]
-            Mx_batch = Mx_train_shuffled[:, :, idx*batch_size:idx*batch_size+batch_size]
-            Y_batch = Y_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
-            self.step(Mx_batch, Y_batch)
-            # compute training and validation loss and accuracy for tracking
-            if ((step + 1) % 100 == 0 or step == 0):
-                self.set_eval_mode()
-                train_loss = self.compute_loss(Mx_train, Y_train)
-                acc_loss = self.compute_loss(Mx_val, Y_val)
-                reg_cost = self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer))
-                reg_cost += self.reg * sum(np.sum(layer.F ** 2) for layer in self.model.layers if isinstance(layer, Patchify))
-                self.train_cost_history.append(train_loss)
-                self.val_cost_history.append(acc_loss)
-                self.train_loss_history.append(train_loss - reg_cost)
-                self.val_loss_history.append(acc_loss - reg_cost)
-                self.train_acc_history.append(self.compute_accuracy(Mx_train, y_train))
-                self.val_acc_history.append(self.compute_accuracy(Mx_val, y_val))
-                self.plot_update_value.append(step + 1)
-            # print training progress
-            if print_every > 0 and (step + 1) % print_every == 0:
-                print(f'Update step {step + 1} - Train Loss: {self.train_loss_history[-1]:.4f}, Val Loss: {self.val_loss_history[-1]:.4f}, Train Acc: {self.train_acc_history[-1]:.4f}, Val Acc: {self.val_acc_history[-1]:.4f}, LR: {self.lr:.6f}')
-
+        steps_taken = 0
+        for cycle in range(n_cycles):
+            for step in range(2 * step_size):
+                # compute learning rate
+                cycle_progress = (step % (2 * step_size)) / (2 * step_size)
+                if cycle_progress < 0.5:
+                    lr = lr_min + 2 * cycle_progress * (lr_max - lr_min)
+                else:
+                    lr = lr_max - 2 * (cycle_progress - 0.5) * (lr_max - lr_min)
+                self.lr = lr
+                self.lr_history.append(lr)
+                # split to batches after end of epoch
+                idx = steps_taken % N_batches
+                if idx == 0:
+                    perm = np.random.permutation(N_train)
+                    Mx_train_shuffled = Mx_train[:, :, perm]
+                    Y_train_shuffled = Y_train[:, perm]
+                Mx_batch = Mx_train_shuffled[:, :, idx*batch_size:idx*batch_size+batch_size]
+                Y_batch = Y_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
+                self.step(Mx_batch, Y_batch)
+                # compute training and validation loss and accuracy for tracking
+                if ((steps_taken + 1) % (step_size/2) == 0 or steps_taken == 0):
+                    self.set_eval_mode()
+                    train_loss = self.compute_loss(Mx_train, Y_train)
+                    acc_loss = self.compute_loss(Mx_val, Y_val)
+                    reg_cost = self.reg * sum(np.sum(layer.W ** 2) for layer in self.model.layers if isinstance(layer, LinearLayer))
+                    reg_cost += self.reg * sum(np.sum(layer.F ** 2) for layer in self.model.layers if isinstance(layer, Patchify))
+                    self.train_cost_history.append(train_loss)
+                    self.val_cost_history.append(acc_loss)
+                    self.train_loss_history.append(train_loss - reg_cost)
+                    self.val_loss_history.append(acc_loss - reg_cost)
+                    self.train_acc_history.append(self.compute_accuracy(Mx_train, y_train))
+                    self.val_acc_history.append(self.compute_accuracy(Mx_val, y_val))
+                    self.plot_update_value.append(steps_taken + 1)
+                # print training progress
+                if print_every > 0 and (steps_taken + 1) % print_every == 0:
+                    print(f'Update step {steps_taken + 1} - Train Loss: {self.train_loss_history[-1]:.4f}, Val Loss: {self.val_loss_history[-1]:.4f}, Train Acc: {self.train_acc_history[-1]:.4f}, Val Acc: {self.val_acc_history[-1]:.4f}, LR: {self.lr:.6f}')
+                steps_taken += 1
+            # increase step size for next cycle
+            step_size *= 2
+            
     def plot_cyclical_lr_training_progress(self) -> None:
         """
         Plots the training and validation loss and accuracy curves for cyclical learning rate training.
