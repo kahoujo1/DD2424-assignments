@@ -212,10 +212,13 @@ class CrossEntropyLoss(Node):
             numpy.float64: The average cross-entropy loss over the batch.
         """
         self.Y = Y
-        self.P = np.exp(logits)
+        shifted_logits = logits - np.max(logits, axis=0, keepdims=True) # for numerical stability
+        self.P = np.exp(shifted_logits)
         reg = np.sum(self.P,axis = 0, keepdims=True)
         self.P /= reg
-        loss = -np.sum(Y * np.log(self.P)) / logits.shape[1]
+        # add small constant to prevent log(0)
+        eps = 1e-15
+        loss = -np.sum(Y * np.log(self.P + eps)) / logits.shape[1]
         return loss
     
     def backward(self) -> np.array:
