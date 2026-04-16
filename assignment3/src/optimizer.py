@@ -9,7 +9,7 @@ from model import Model
 from nodes import CrossEntropyLoss, LinearLayer, KBinaryCELoss, Patchify
 
 class Optimizer:
-    def __init__(self, model: Model, loss_fn: CrossEntropyLoss | KBinaryCELoss, lr: np.float64, reg: np.float64, label_smoothing: float = 0.0):
+    def __init__(self, model: Model, loss_fn: CrossEntropyLoss | KBinaryCELoss, lr: np.float64, reg: np.float64, label_smoothing: float = 0.0, lr_decay: float = 1.0):
         """
         Initializes the optimizer.
 
@@ -19,12 +19,15 @@ class Optimizer:
             lr (np.float64): The learning rate.
             reg (np.float64): The regularization parameter (lambda).
             label_smoothing (float): The probability of label smoothing to distribute over the non-true classes (only applicable for CrossEntropyLoss). Defaults to 0.0 (no label smoothing).
+            lr_decay (float): The maximum learning rate decay factor. Defaults to 1.0 (no decay).
+        
         """
         self.model = model
         self.loss_fn = loss_fn
         self.lr = lr
         self.reg = reg
         self.label_smoothing = label_smoothing
+        self.lr_decay = lr_decay
         # variables for tracking training progress
         self.train_cost_history = []
         self.val_cost_history = []
@@ -184,6 +187,7 @@ class Optimizer:
                 steps_taken += 1
             # increase step size for next cycle
             step_size *= 2
+            lr_max *= self.lr_decay
 
     def plot_cyclical_lr_training_progress(self) -> None:
         """
