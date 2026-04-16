@@ -389,7 +389,40 @@ def excercise3_train_for_longer():
     optimizer.plot_cyclical_lr_training_progress()
 
 def excercise4():
-    pass
+    # data
+    scaler = Scaler()
+    X, Y, y = load_training_batches()
+    X_train, Y_train, y_train = X[:, :49000], Y[:, :49000], y[:49000]
+    X_val, Y_val, y_val = X[:, 49000:], Y[:,49000:], y[49000:]
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test, Y_test, y_test = load_batch('test_batch')
+    X_test = scaler.transform(X_test)
+    # architecture 5 params
+    f = 4
+    nf = 40
+    nh = 300
+    lam = 0.0025
+    # precompute Mx for all sets
+    Mx_train = precompute_Mx(X_train, f)
+    Mx_val = precompute_Mx(X_val, f)
+    Mx_test = precompute_Mx(X_test, f)
+    # without label smoothing
+    model = Model(f, nf, nh, 10)
+    optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.001, reg=lam)
+    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=4, batch_size=100, print_every=0)
+    test_acc = optimizer.compute_accuracy(Mx_test, y_test)
+    val_acc = optimizer.compute_accuracy(Mx_val, y_val)
+    print(f"Architecture 5 (no label smoothing) - Test accuracy: {test_acc:.4f}, Validation accuracy: {val_acc:.4f}")
+    optimizer.plot_cyclical_lr_training_progress()
+    # with label smoothing
+    model = Model(f, nf, nh, 10)
+    optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.001, reg=lam, label_smoothing=0.2)
+    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=4, batch_size=100, print_every=0)
+    test_acc = optimizer.compute_accuracy(Mx_test, y_test)
+    val_acc = optimizer.compute_accuracy(Mx_val, y_val)
+    print(f"Architecture 5 (with label smoothing) - Test accuracy: {test_acc:.4f}, Validation accuracy: {val_acc:.4f}")
+    optimizer.plot_cyclical_lr_training_progress()
 
 def main():
     pass
@@ -402,4 +435,5 @@ if __name__ == "__main__":
     # test_grads_with_torch()
     # excercise3()
     # excercise3_architectures()
-    excercise3_train_for_longer()
+    # excercise3_train_for_longer()
+    excercise4()

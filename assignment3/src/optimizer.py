@@ -219,6 +219,7 @@ class Optimizer:
         plt.ylabel('Accuracy')
         plt.title('Training and Validation Accuracy')
         plt.grid()
+        plt.ylim(0,1)
         plt.legend()
         plt.tight_layout()
         plt.show()
