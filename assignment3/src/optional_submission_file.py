@@ -64,6 +64,7 @@ def architecture_search():
             for lam in lam_values:
                 for smoothing in smoothing_values:
                     for decay in decay_values:
+                        print(f"Training model with nf={nf}, nh={nh}, lam={lam}, smoothing={smoothing}, decay={decay}...")
                         model = Model(f, nf, nh, 10)
                         optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.001, reg=lam, label_smoothing=smoothing, lr_decay=decay)
                         optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=4, batch_size=100, print_every=0)
@@ -74,5 +75,9 @@ def architecture_search():
     with open('architecture_search_results.pkl', 'wb') as f:
         pickle.dump(results, f)
 
+
+#Training model with nf=40, nh=400, lam=0.005, smoothing=0.0, decay=0.9...
+#f=4, nf=40, nh=400, lam=0.005, smoothing=0.0, decay=0.9 - Test accuracy: 0.6605, Validation accuracy: 0.6640
 if __name__ == "__main__":
-    main()
+    # main()
+    architecture_search()
