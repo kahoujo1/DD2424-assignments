@@ -84,3 +84,25 @@ def precompute_Mx(X: np.ndarray, f: int) -> np.ndarray:
                 Mx[region, :, n] = patch.reshape((1, f*f*3), order='C')
                 region += 1
     return Mx
+
+def flip_vertically(X: np.ndarray) -> np.ndarray:
+    """
+    Flips the input images vertically.
+
+    Args: 
+        X (numpy array): Input batch of shape (D, N), where N is the number of samples, and D is the flattened image dimensionality.
+    
+    Returns:
+        numpy array: Vertically flipped images of shape (D, N).
+    """
+    # Reshape X to (32, 32, 3, N) to represent the images in their original shape
+    N = X.shape[1]
+    X_reshaped = X.reshape((32, 32, 3, N), order='F')
+    
+    # Flip the images vertically by reversing the order of the rows
+    X_flipped = X_reshaped[::-1, :, :, :]
+    
+    # Reshape back to (D, N)
+    X_flipped = X_flipped.reshape((32*32*3, N), order='F')
+    
+    return X_flipped

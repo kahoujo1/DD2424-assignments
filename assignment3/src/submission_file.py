@@ -567,7 +567,7 @@ class Optimizer:
                 Y_batch = Y_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
                 self.step(Mx_batch, Y_batch)
                 # compute training and validation loss and accuracy for tracking
-                if ((steps_taken + 1) % (step_size/2) == 0 or steps_taken == 0):
+                if ((steps_taken + 1) % (step_size) == 0 or steps_taken == 0):
                     self.set_eval_mode()
                     train_loss = self.compute_loss(Mx_train, Y_train)
                     acc_loss = self.compute_loss(Mx_val, Y_val)

@@ -119,7 +119,7 @@ class Optimizer:
         # update parameters
         self.model.update_params(self.lr)
 
-    def train_with_cyclical_lr(self, Mx_train: np.ndarray, y_train: np.ndarray, Mx_val: np.ndarray, y_val: np.ndarray, lr_min: float, lr_max: float, step_size: int, n_cycles: int, batch_size: int = 100, print_every: int = 0) -> None:
+    def train_with_cyclical_lr(self, Mx_train: np.ndarray, y_train: np.ndarray, Mx_val: np.ndarray, y_val: np.ndarray, lr_min: float, lr_max: float, step_size: int, n_cycles: int, batch_size: int = 100, print_every: int = 0, flip_prob: float = 0.0, Mx_train_flip: np.ndarray = None) -> None:
         """
         Trains the model using a cyclical learning rate scheduler.
         
@@ -134,6 +134,8 @@ class Optimizer:
             n_cycles (int): The number of cycles in the training process.
             batch_size (int, optional): The size of each mini-batch. Defaults to 100.
             print_every (int, optional): If greater than 0, prints training progress every print_every update steps. Defaults to 0 (no printing).
+            flip_prob (float, optional): The probability of flipping the training images. Defaults to 0.0.
+            Mx_train_flip (numpy array, optional): Precomputed Mx matrix for the flipped training data of shape (Np, 3f^2, N_train). Required if flip_prob > 0. Defaults to None.
         """
         # transform y to one hot encoding
         N_train = y_train.shape[0]
@@ -166,9 +168,14 @@ class Optimizer:
                     Y_train_shuffled = Y_train[:, perm]
                 Mx_batch = Mx_train_shuffled[:, :, idx*batch_size:idx*batch_size+batch_size]
                 Y_batch = Y_train_shuffled[:, idx*batch_size:idx*batch_size+batch_size]
+                if flip_prob > 0 and Mx_train_flip is not None:
+                    flip_mask = np.random.rand(batch_size) < flip_prob
+                    if np.any(flip_mask):
+                        batch_indices = perm[idx*batch_size:idx*batch_size+batch_size][flip_mask]
+                        Mx_batch[:, :, flip_mask] = Mx_train_flip[:, :, batch_indices]
                 self.step(Mx_batch, Y_batch)
                 # compute training and validation loss and accuracy for tracking
-                if ((steps_taken + 1) % (step_size/2) == 0 or steps_taken == 0):
+                if ((steps_taken + 1) % (step_size//2) == 0 or steps_taken == 0):
                     self.set_eval_mode()
                     train_loss = self.compute_loss(Mx_train, Y_train)
                     acc_loss = self.compute_loss(Mx_val, Y_val)
@@ -242,28 +249,6 @@ class Optimizer:
         plt.tight_layout()
         plt.show()
 
-    def flip_vertically(self, X: np.ndarray) -> np.ndarray:
-        """
-        Flips the input images vertically.
-
-        Args: 
-            X (numpy array): Input batch of shape (D, N), where N is the number of samples, and D is the flattened image dimensionalitu.
-        
-        Returns:
-            numpy array: Vertically flipped images of shape (D, N).
-        """
-        # Reshape X to (32, 32, 3, N) to represent the images in their original shape
-        N = X.shape[1]
-        X_reshaped = X.reshape((32, 32, 3, N), order='F')
-        
-        # Flip the images vertically by reversing the order of the rows
-        X_flipped = X_reshaped[::-1, :, :, :]
-        
-        # Reshape back to (D, N)
-        X_flipped = X_flipped.reshape((32*32*3, N), order='F')
-        
-        return X_flipped
-    
     def set_train_mode(self):
         """
         Sets the model to training mode.
