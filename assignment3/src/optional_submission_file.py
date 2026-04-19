@@ -9,7 +9,7 @@ from scaler import Scaler
 from utils import *
 from optimizer import Optimizer
 
-def main():
+def label_smoothing():
     scaler = Scaler()
     X, Y, y = load_training_batches()
     X_train, Y_train, y_train = X[:, :49000], Y[:, :49000], y[:49000]
@@ -120,19 +120,21 @@ def main():
     X_test, Y_test, y_test = load_batch('test_batch')
     X_test = scaler.transform(X_test)
     f = 4
-    nf = 40
+    nf = 80
     Mx_train = precompute_Mx(X_train, f)
     Mx_train_flipped = precompute_Mx(flip_vertically(X_train),f)
     Mx_val = precompute_Mx(X_val, f)
     Mx_test = precompute_Mx(X_test, f)
-    model = Model(f, nf, 400, 10)
-    optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.001, reg=0.001, label_smoothing=0.1, lr_decay=0.9)
-    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=4, batch_size=100, print_every=400, flip_prob=0.5, Mx_train_flip=Mx_train_flipped)
+    model = Model(f, nf, 600, 10, p = 0.3)
+    optimizer = Optimizer(model, CrossEntropyLoss(), lr=0.001, reg=0.002, label_smoothing=0.1, lr_decay=0.9)
+    optimizer.train_with_cyclical_lr(Mx_train, y_train, Mx_val, y_val, lr_min=1e-5, lr_max=1e-1, step_size=800, n_cycles=5, batch_size=100, print_every=800, flip_prob=0.5, Mx_train_flip=Mx_train_flipped)
+    optimizer.set_eval_mode()
     test_acc = optimizer.compute_accuracy(Mx_test, y_test)
     val_acc = optimizer.compute_accuracy(Mx_val, y_val) 
     print(f"Test accuracy: {test_acc:.4f}, Validation accuracy: {val_acc:.4f}")
     optimizer.plot_cyclical_lr_training_progress()
     optimizer.plot_learning_rate_history()
+
 if __name__ == "__main__":
     main()
     # architecture_search()
