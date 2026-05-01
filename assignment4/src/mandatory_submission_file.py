@@ -2,7 +2,7 @@
 This file serves as the implementation of RNN model for assignment 4.
 """
 import numpy as np
-
+from torch_gradient_computations_row_wise import ComputeGradsWithTorch
 class Converter:
     def __init__(self, chars):
         self.chars = chars
@@ -141,11 +141,6 @@ class RNN:
             tmp_grad_U[self.inputs[t, :] == 1] = grad_h_raw
             self.grad_U += tmp_grad_U
             grad_h_next = grad_h_raw @ self.W.transpose() # update the gradient for the next hidden state
-        self.grad_W /= T
-        self.grad_U /= T
-        self.grad_b /= T
-        self.grad_V /= T
-        self.grad_c /= T
     
     def update_parameters(self, learning_rate):
         """
@@ -198,8 +193,33 @@ class CrossEntropyLoss():
         """
         return (self.P - self.Y) / self.P.shape[0]
     
-    def gradient_test():
-        pass
+def gradient_test():
+    seq_length = 25
+    hidden_size = 10
+    book_fname = "../data/goblet_book.txt"
+    fid = open(book_fname, "r")
+    book_data = fid.read()
+    fid.close()
+    unique_chars = list(set(book_data))
+    X_chars = book_data[0:seq_length]
+    Y_chars = book_data[1:seq_length+1]
+    converter = Converter(unique_chars)
+    X = converter.char2onehot(X_chars)
+    Y = converter.char2onehot(Y_chars)
+    rnn = RNN(input_size=len(unique_chars), hidden_size=hidden_size)
+    logits = rnn.forward(X)
+    loss = CrossEntropyLoss()
+    loss_value = loss.forward(logits, Y)
+    print("Loss:", loss_value)
+    y = np.argmax(Y, axis=1).squeeze()
+    print(y.shape)
+    gt_grads = ComputeGradsWithTorch(X, y, np.zeros((1, hidden_size)), rnn.W, rnn.U, rnn.V, rnn.b, rnn.c)
+    rnn.backward(loss.backward())
+    print("Gradient check for W:", np.mean(np.abs(rnn.grad_W - gt_grads['W'])))   
+    print("Gradient check for U:", np.mean(np.abs(rnn.grad_U - gt_grads['U'])))
+    print("Gradient check for V:", np.mean(np.abs(rnn.grad_V - gt_grads['V'])))
+    print("Gradient check for b:", np.mean(np.abs(rnn.grad_b - gt_grads['b'])))
+    print("Gradient check for c:", np.mean(np.abs(rnn.grad_c - gt_grads['c'])))
 
-    if __name__ == "__main__":
-        gradient_test()
+if __name__ == "__main__":
+    gradient_test()
