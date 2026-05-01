@@ -15,3 +15,4 @@ assignment3/debug_info.npz
 
 assignment4/src/__pycache__/
 assignment4/report/
+*.npz

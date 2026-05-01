@@ -3,6 +3,8 @@ This file serves as the implementation of RNN model for assignment 4.
 """
 import numpy as np
 from torch_gradient_computations_row_wise import ComputeGradsWithTorch
+import matplotlib.pyplot as plt
+
 class Converter:
     def __init__(self, chars):
         self.chars = chars
@@ -45,7 +47,7 @@ class RNN:
         self.input_size = input_size # K in the equations
         self.hidden_size = hidden_size # m in the equations
         # note that the inputs will be saved as rows
-        self.h = np.zeros((1, self.hidden_size), dtype=np.float16) # initial hidden state
+        self.h = np.zeros((1, self.hidden_size), dtype=np.float32) # initial hidden state
         # Initialize weights and biases
         self.U = (1/np.sqrt(2*self.input_size)) * np.random.randn(self.input_size, self.hidden_size) # Kxm
         self.W = (1/np.sqrt(2*self.hidden_size)) * np.random.randn(self.hidden_size, self.hidden_size) # mxm
@@ -75,9 +77,9 @@ class RNN:
         Returns:
             np.ndarray: A one-hot encoded array of shape (n, input_size) representing the predicted characters.
         """
-        Y = np.zeros((n, self.input_size), dtype=np.float16)
+        Y = np.zeros((n, self.input_size), dtype=np.float32)
         # for prediction, start with the initial hidden state = 0
-        h = np.zeros((1, self.hidden_size), dtype=np.float16) 
+        h = np.zeros((1, self.hidden_size), dtype=np.float32) 
         x = x0
         for t in range(n):
             h = np.tanh(x @ self.U + h @ self.W + self.b)
@@ -103,9 +105,9 @@ class RNN:
         """
         T = X.shape[0]
         Ux = X @ self.U # precompute input to hidden transformations
-        H = np.zeros((T+1, self.hidden_size), dtype=np.float16) # to store hidden states for backpropagation
+        H = np.zeros((T+1, self.hidden_size), dtype=np.float32) # to store hidden states for backpropagation
         H[-1, :] = self.h # save to the end for backpropagation
-        Y = np.zeros((T, self.input_size), dtype=np.float16)
+        Y = np.zeros((T, self.input_size), dtype=np.float32)
         for t in range(T):
             self.h = np.tanh(Ux[t, :] + self.h @ self.W + self.b)
             H[t, :] = self.h
@@ -128,7 +130,7 @@ class RNN:
             self.grad_U, self.grad_W, self.grad_b, self.grad_V, self.grad_c: The computed gradients for the model parameters.
         """
         T = grad_Y.shape[0]
-        grad_h_next = np.zeros((1, self.hidden_size), dtype=np.float16) # gradient of the loss with respect to the next hidden state
+        grad_h_next = np.zeros((1, self.hidden_size), dtype=np.float32) # gradient of the loss with respect to the next hidden state
         for t in reversed(range(T)):
             grad_o = grad_Y[t, :]
             self.grad_V += np.outer(self.hidden_states[t, :], grad_o) # gradient of the loss with respect to V
@@ -178,10 +180,11 @@ class CrossEntropyLoss():
             numpy.float64: The average cross-entropy loss over the batch.
         """
         self.Y = Y
-        self.P = np.exp(logits)
+        shifted_logits = logits - np.max(logits, axis=1, keepdims=True) # for numerical stability
+        self.P = np.exp(shifted_logits)
         reg = np.sum(self.P,axis = 1, keepdims=True)
         self.P /= reg
-        loss = -np.sum(Y * np.log(self.P)) / logits.shape[0]
+        loss = -np.sum(Y * np.log(self.P + 1e-8)) / logits.shape[0]
         return loss
     
     def backward(self) -> np.array:
@@ -193,6 +196,114 @@ class CrossEntropyLoss():
         """
         return (self.P - self.Y) / self.P.shape[0]
     
+class AdamOptimizer:
+    def __init__(self, rnn: RNN, learning_rate: float = 0.001, beta1: float = 0.9, beta2: float = 0.999, epsilon: float = 1e-8):
+        self.rnn = rnn
+        self.learning_rate = learning_rate
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epsilon = epsilon
+        # Initialize moment estimates for each parameter
+        self.m_U = np.zeros_like(rnn.U)
+        self.v_U = np.zeros_like(rnn.U)
+        self.m_W = np.zeros_like(rnn.W)
+        self.v_W = np.zeros_like(rnn.W)
+        self.m_b = np.zeros_like(rnn.b)
+        self.v_b = np.zeros_like(rnn.b)
+        self.m_V = np.zeros_like(rnn.V)
+        self.v_V = np.zeros_like(rnn.V)
+        self.m_c = np.zeros_like(rnn.c)
+        self.v_c = np.zeros_like(rnn.c)
+        self.timestep = 0
+        # structures for saving progress
+        self.best_model = None
+        self.best_loss = float('inf')
+        self.loss_history = []
+    
+    def step(self):
+        self.timestep += 1
+        # Update moment estimates for U
+        self.m_U = self.beta1 * self.m_U + (1 - self.beta1) * self.rnn.grad_U
+        self.v_U = self.beta2 * self.v_U + (1 - self.beta2) * (self.rnn.grad_U ** 2)
+        m_U_hat = self.m_U / (1 - self.beta1 ** self.timestep)
+        v_U_hat = self.v_U / (1 - self.beta2 ** self.timestep)
+        # Update moment estimates for W
+        self.m_W = self.beta1 * self.m_W + (1 - self.beta1) * self.rnn.grad_W
+        self.v_W = self.beta2 * self.v_W + (1 - self.beta2) * (self.rnn.grad_W ** 2)
+        m_W_hat = self.m_W / (1 - self.beta1 ** self.timestep)
+        v_W_hat = self.v_W / (1 - self.beta2 ** self.timestep)
+        # Update moment estimates for b
+        self.m_b = self.beta1 * self.m_b + (1 - self.beta1) * self.rnn.grad_b
+        self.v_b = self.beta2 * self.v_b + (1 - self.beta2) * (self.rnn.grad_b ** 2)
+        m_b_hat = self.m_b / (1 - self.beta1 ** self.timestep)
+        v_b_hat = self.v_b / (1 - self.beta2 ** self.timestep)
+        # Update moment estimates for V
+        self.m_V = self.beta1 * self.m_V + (1 - self.beta1) * self.rnn.grad_V
+        self.v_V = self.beta2 * self.v_V + (1 - self.beta2) * (self.rnn.grad_V ** 2)
+        m_V_hat = self.m_V / (1 - self.beta1 ** self.timestep)
+        v_V_hat = self.v_V / (1 - self.beta2 ** self.timestep)
+        # Update moment estimates for c
+        self.m_c = self.beta1 * self.m_c + (1 - self.beta1) * self.rnn.grad_c
+        self.v_c = self.beta2 * self.v_c + (1 - self.beta2) * (self.rnn.grad_c ** 2)
+        m_c_hat = self.m_c / (1 - self.beta1 ** self.timestep)
+        v_c_hat = self.v_c / (1 - self.beta2 ** self.timestep)
+        # Update parameters
+        self.rnn.U -= self.learning_rate * m_U_hat / (np.sqrt(v_U_hat) + self.epsilon)
+        self.rnn.W -= self.learning_rate * m_W_hat / (np.sqrt(v_W_hat) + self.epsilon)
+        self.rnn.b -= self.learning_rate * m_b_hat / (np.sqrt(v_b_hat) + self.epsilon)
+        self.rnn.V -= self.learning_rate * m_V_hat / (np.sqrt(v_V_hat) + self.epsilon)
+        self.rnn.c -= self.learning_rate * m_c_hat / (np.sqrt(v_c_hat) + self.epsilon)
+        # Reset gradients after update
+        self.rnn.grad_U = np.zeros_like(self.rnn.grad_U)
+        self.rnn.grad_W = np.zeros_like(self.rnn.grad_W)
+        self.rnn.grad_b = np.zeros_like(self.rnn.grad_b)
+        self.rnn.grad_V = np.zeros_like(self.rnn.grad_V)
+        self.rnn.grad_c = np.zeros_like(self.rnn.grad_c)
+
+    def train(self, book_data: str, seq_length: int, num_epochs: int):
+        converter = Converter(list(set(book_data)))
+        epoch = 1
+        book_start = 0
+        loss_fn = CrossEntropyLoss()
+        smooth_loss = None
+        while epoch <= num_epochs:
+            X_chars = book_data[book_start:book_start+seq_length]
+            Y_chars = book_data[book_start+1:book_start+seq_length+1]
+            X = converter.char2onehot(X_chars)
+            Y = converter.char2onehot(Y_chars)
+            logits = self.rnn.forward(X)
+            loss_value = loss_fn.forward(logits, Y)
+            smooth_loss = loss_value if smooth_loss is None else 0.999 * smooth_loss + 0.001 * loss_value
+            self.loss_history.append(smooth_loss)
+            self.rnn.backward(loss_fn.backward())
+            self.step()
+            if loss_value < self.best_loss:
+                self.best_loss = loss_value
+                self.best_model = (self.rnn.U.copy(), self.rnn.W.copy(), self.rnn.b.copy(), self.rnn.V.copy(), self.rnn.c.copy())
+            book_start += seq_length
+            self.timestep += 1
+            if book_start + seq_length + 1 >= len(book_data):
+                book_start = 0
+                epoch += 1
+                self.rnn.h = np.zeros((1, self.rnn.hidden_size), dtype=np.float32) # reset hidden state at the end of each epoch
+            if self.timestep % 5000 == 0:
+                print(f"Epoch {epoch}, Update Step {self.timestep}, Loss: {smooth_loss:.4f}")
+            if self.timestep % 10000 == 0:
+                sample = self.rnn.predict_next_n(X[0:1, :], 200)
+                print("------------")
+                print("Sampled text:  \n", converter.onehot2char(sample))
+                print("------------")
+
+    def save_best_model(self, filename):
+        np.savez(filename, U=self.best_model[0], W=self.best_model[1], b=self.best_model[2], V=self.best_model[3], c=self.best_model[4])
+
+    def plot_loss_history(self):
+        plt.plot(self.loss_history)
+        plt.xlabel('Update Steps')
+        plt.ylabel('Smoothed Loss')
+        plt.title('Training Loss History')
+        plt.show()
+
 def gradient_test():
     seq_length = 25
     hidden_size = 10
@@ -221,5 +332,26 @@ def gradient_test():
     print("Gradient check for b:", np.mean(np.abs(rnn.grad_b - gt_grads['b'])))
     print("Gradient check for c:", np.mean(np.abs(rnn.grad_c - gt_grads['c'])))
 
+def train_rnn():
+    seq_length = 25
+    hidden_size = 100
+    num_epochs = 4
+    book_fname = "../data/goblet_book.txt"
+    fid = open(book_fname, "r")
+    book_data = fid.read()
+    fid.close()
+    rnn = RNN(input_size=len(set(book_data)), hidden_size=hidden_size)
+    optimizer = AdamOptimizer(rnn)
+    optimizer.train(book_data, seq_length, num_epochs)
+    optimizer.plot_loss_history()
+    converter = Converter(list(set(book_data)))
+    X = converter.char2onehot(book_data[0:1])
+    sample = rnn.predict_next_n(X, 1000)
+    print("------------")
+    print("Sampled text:  \n", converter.onehot2char(sample))
+    print("------------")
+    optimizer.save_best_model("rnn_goblet_book.npz")
+
 if __name__ == "__main__":
-    gradient_test()
+    # gradient_test()
+    train_rnn()
