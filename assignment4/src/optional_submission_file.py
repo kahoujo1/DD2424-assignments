@@ -259,8 +259,7 @@ class AdamOptimizer:
         self.rnn.grad_V = np.zeros_like(self.rnn.grad_V)
         self.rnn.grad_c = np.zeros_like(self.rnn.grad_c)
 
-    def train(self, book_data: str, seq_length: int, num_epochs: int):
-        converter = Converter(sorted(list(set(book_data))))
+    def train(self, book_data: str, seq_length: int, num_epochs: int, converter: Converter):
         epoch = 1
         book_start = 0
         loss_fn = CrossEntropyLoss()
@@ -356,7 +355,7 @@ def train_rnn():
     print("------------")
     print("Sampled text:  \n", converter.onehot2char(sample))
     print("------------")
-    optimizer.train(book_data, seq_length, num_epochs)
+    optimizer.train(book_data, seq_length, num_epochs, converter)
     optimizer.plot_loss_history()
     optimizer.save_best_model("rnn_goblet_book.npz")
     sample = rnn.predict_next_n(X, 1000)
@@ -385,5 +384,5 @@ def task_4():
 
 if __name__ == "__main__":
     # gradient_test()
-    # train_rnn()
-    task_4()
+    train_rnn()
+    # task_4()
