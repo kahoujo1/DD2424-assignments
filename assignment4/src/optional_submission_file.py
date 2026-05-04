@@ -43,10 +43,24 @@ class Converter:
         return ''.join(chars)
 
 class RNN:
-    def __init__(self, input_size, hidden_size, batch_size=1):
+    def __init__(self, input_size, hidden_size, batch_size=1, sample_strategy='classic', temperature=1.0, nucleus_threshold=1.0):
+        """
+        Initializes the RNN model with the given parameters.
+
+        Args:
+            input_size (int): The size of the input layer (number of unique characters).
+            hidden_size (int): The size of the hidden layer.
+            batch_size (int): The number of sequences to process in parallel during training.
+            sample_strategy (str): The strategy to use for sampling the next character during prediction. Options include 'classic', 'temperature', and 'nucleus'.
+            temperature (float): The temperature parameter for sampling, used when sample_strategy is 'temperature'.
+            nucleus_threshold (float): The threshold for nucleus sampling, used when sample_strategy is 'nucleus'.
+        """
         self.input_size = input_size # K in the equations
         self.hidden_size = hidden_size # m in the equations
         self.batch_size = batch_size
+        self.sample_strategy = sample_strategy
+        self.temperature = temperature
+        self.nucleus_threshold = nucleus_threshold
         # note that the inputs will be saved as rows
         self.h = np.zeros((batch_size, self.hidden_size), dtype=np.float32) # initial hidden state
         # Initialize weights and biases
@@ -85,15 +99,45 @@ class RNN:
         for t in range(n):
             h = np.tanh(x @ self.U + h @ self.W + self.b)
             o = h @ self.V + self.c # compute output logits
-            o = np.exp(o - np.max(o)) # for numerical stability
-            o /= np.sum(o) # softmax to get probabilities
-            # sample the next character from the output distribution
-            y = np.random.choice(self.input_size, p=o.ravel())
+            y = self.sample(o.flatten())
             Y[t][y] = 1.0
             x = np.zeros_like(x)
             x[0, y] = 1.0 # set the next input to the predicted character
         return Y
-    
+
+    def sample(self, logits: np.ndarray) -> int:
+        """
+        Samples the next character index from the output logits using the specified sampling strategy.
+
+        Args:
+            logits (np.ndarray): A 1D array of shape (input_size,) representing the output logits for the next character.
+
+        Returns:
+            int: The index of the sampled character.
+        """
+        if self.sample_strategy == 'classic':
+            probs = np.exp(logits - np.max(logits))
+            probs = probs / np.sum(probs)
+            return np.random.choice(self.input_size, p=probs.ravel())
+        elif self.sample_strategy == 'temperature':
+            logits = logits / self.temperature
+            logits = logits - np.max(logits)
+            probs = np.exp(logits)
+            probs = probs / np.sum(probs)
+            return np.random.choice(self.input_size, p=probs.ravel())
+        elif self.sample_strategy == 'nucleus':
+            indices = np.argsort(logits)[::-1]
+            probs = np.exp(logits[indices] - np.max(logits[indices]))
+            probs = probs / np.sum(probs)
+            cumulative_probs = np.cumsum(probs)
+            nucleus_indices = indices[cumulative_probs <= self.nucleus_threshold]
+            if len(nucleus_indices) == 0:
+                nucleus_indices = indices[[np.argmax(probs)]]
+            sampled_index = np.random.choice(len(nucleus_indices), p=probs[nucleus_indices] / np.sum(probs[nucleus_indices]))
+            return nucleus_indices[sampled_index]
+        else:
+            raise ValueError("Invalid sampling strategy. Choose from 'classic', 'temperature', or 'nucleus'.")
+
     def forward(self, X: np.ndarray) -> np.ndarray:
         """
         Performs a forward pass through the RNN for a given input sequence X.
@@ -377,22 +421,21 @@ def _updates_per_epoch(text_len, batch_size, seq_length):
     # number of updates when stepping by seq_length until end
     return max(1, (chunk_size - seq_length - 1) // seq_length + 1)
 
-def run_batch_experiments(book_fname="../data/goblet_book.txt", seq_length=25, hidden_size=100, batch_sizes=(1,4,8,16), base_batch=1, base_epochs=5):
+def run_batch_experiments(book_fname="../data/goblet_book.txt", seq_length=25, hidden_size=100, batch_sizes=(4,8,16), base_total_updates=180000):
     fid = open(book_fname, "r")
     book_data = fid.read()
     fid.close()
     text_len = len(book_data)
     # compute target total updates from base configuration
-    base_updates_per_epoch = _updates_per_epoch(text_len, base_batch, seq_length)
-    target_updates = base_updates_per_epoch * base_epochs
+    
     all_runs = {}
     for b in batch_sizes:
         updates_per_epoch = _updates_per_epoch(text_len, b, seq_length)
-        epochs = max(1, int(round(target_updates / updates_per_epoch)))
+        epochs = max(1, int(round(base_total_updates / updates_per_epoch)))
         rnn = RNN(input_size=len(set(book_data)), hidden_size=hidden_size, batch_size=b)
         optimizer = AdamOptimizer(rnn)
         converter = Converter(sorted(list(set(book_data))))
-        print(f"Training batch_size={b}, epochs={epochs}, target_updates~{target_updates}")
+        print(f"Training batch_size={b}, epochs={epochs}, target_updates~{base_total_updates}")
         optimizer.train(book_data, seq_length, epochs, converter)
         # save histories as numpy arrays
         loss_arr = np.array(optimizer.loss_history)
@@ -402,7 +445,7 @@ def run_batch_experiments(book_fname="../data/goblet_book.txt", seq_length=25, h
     # also save combined
     np.savez("all_loss_histories.npz", **{f"bs{b}_loss": all_runs[b][0] for b in all_runs}, **{f"bs{b}_val": all_runs[b][1] for b in all_runs})
 
-def plot_loss_histories(batch_sizes=(1,4,8,16)):
+def plot_loss_histories(batch_sizes=(4,8,16)):
     # plot the training losses together for comparison
     plt.figure(figsize=(12, 6))
     for b in batch_sizes:
@@ -428,5 +471,5 @@ if __name__ == "__main__":
     # gradient_test()
     # train_rnn()
 
-    run_batch_experiments()
-    # task_4()
+    # run_batch_experiments()
+    plot_loss_histories()
