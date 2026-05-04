@@ -17,3 +17,4 @@ assignment4/src/__pycache__/
 assignment4/report/
 assignment4/fig/
 *.npz
+*.txt

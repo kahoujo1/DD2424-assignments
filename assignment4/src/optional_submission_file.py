@@ -126,15 +126,19 @@ class RNN:
             probs = probs / np.sum(probs)
             return np.random.choice(self.input_size, p=probs.ravel())
         elif self.sample_strategy == 'nucleus':
+            # sort logits and compute cumulative probabilities
             indices = np.argsort(logits)[::-1]
             probs = np.exp(logits[indices] - np.max(logits[indices]))
             probs = probs / np.sum(probs)
             cumulative_probs = np.cumsum(probs)
-            nucleus_indices = indices[cumulative_probs <= self.nucleus_threshold]
-            if len(nucleus_indices) == 0:
-                nucleus_indices = indices[[np.argmax(probs)]]
-            sampled_index = np.random.choice(len(nucleus_indices), p=probs[nucleus_indices] / np.sum(probs[nucleus_indices]))
-            return nucleus_indices[sampled_index]
+            # create a boolean mask
+            valid_mask = cumulative_probs < self.nucleus_threshold # strictly less than threshold
+            valid_mask = np.concatenate(([True], valid_mask[:-1])) # shift to include first index >= threshold
+            valid_probs = probs[valid_mask]
+            valid_probs = valid_probs / np.sum(valid_probs)
+            valid_indices = indices[valid_mask]
+            idx_in_valid = np.random.choice(len(valid_probs), p=valid_probs.ravel())
+            return valid_indices[idx_in_valid]
         else:
             raise ValueError("Invalid sampling strategy. Choose from 'classic', 'temperature', or 'nucleus'.")
 
@@ -467,9 +471,46 @@ def plot_loss_histories(batch_sizes=(4,8,16)):
     plt.title('Validation Loss History for Different Batch Sizes')
     plt.show()
 
+def compare_sampling():
+    seq_length = 25
+    hidden_size = 100
+    batch_size = 16
+    book_fname = "../data/goblet_book.txt"
+    fid = open(book_fname, "r")
+    book_data = fid.read()
+    fid.close()
+    converter = Converter(sorted(list(set(book_data))))
+    X = converter.char2onehot(book_data[0:1])
+    # normal sampling
+    rnn = RNN(input_size=len(set(book_data)), hidden_size=hidden_size, batch_size=batch_size, sample_strategy='classic')
+    optimizer = AdamOptimizer(rnn)
+    optimizer.load_model("optional_model.npz")
+    result = rnn.predict_next_n(X, 1000)
+    with open("classic_sampling.txt", "w") as f:
+        f.write(converter.onehot2char(result))
+    # temperature sampling
+    for temp in [0.3, 0.5, 0.8]:
+        rnn = RNN(input_size=len(set(book_data)), hidden_size=hidden_size, batch_size=batch_size, sample_strategy='temperature', temperature=temp)
+        optimizer = AdamOptimizer(rnn)
+        optimizer.load_model("optional_model.npz")
+        result = rnn.predict_next_n(X, 1000)
+        with open(f"temperature_sampling_temp{temp}.txt", "w") as f:
+            f.write(converter.onehot2char(result))
+    # nucleus sampling
+    for threshold in [0.3, 0.5, 0.8]:
+        rnn = RNN(input_size=len(set(book_data)), hidden_size=hidden_size, batch_size=batch_size, sample_strategy='nucleus', nucleus_threshold=threshold)
+        optimizer = AdamOptimizer(rnn)
+        optimizer.load_model("optional_model.npz")
+        result = rnn.predict_next_n(X, 1000)
+        with open(f"nucleus_sampling_threshold{threshold}.txt", "w") as f:
+            f.write(converter.onehot2char(result))
+    print("Sampling comparison completed. Results saved to text files.")
+
+
 if __name__ == "__main__":
     # gradient_test()
     # train_rnn()
 
     # run_batch_experiments()
-    plot_loss_histories()
+    # plot_loss_histories()
+    compare_sampling()
